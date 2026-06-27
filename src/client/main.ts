@@ -247,6 +247,7 @@ function wireCanvas(): void {
 
   canvasElement.addEventListener("pointermove", (event) => {
     if (!state.dragStart) return;
+    if (state.dragButton !== 2) return;
     const current = { x: event.clientX, y: event.clientY };
     state.dragRect = normalizeRect(state.dragStart, current);
     state.renderer.setDragRect(state.dragRect);
@@ -259,7 +260,7 @@ function wireCanvas(): void {
     const dragRect = normalizeRect(state.dragStart, end);
     const isClick = dragRect.width < 6 && dragRect.height < 6;
     if (state.dragButton === 0) {
-      if (isClick) issueContextCommand(end);
+      issueContextCommand(end);
     } else if (isClick) {
       const entity = state.renderer.ownedUnitAt(end.x, end.y, state.playerId);
       if (entity) selectSingle(end);
@@ -373,6 +374,7 @@ function selectSingle(point: { x: number; y: number }): void {
     state.selectedIds.add(entity.id);
   }
   state.renderer.setSelection(state.selectedIds);
+  updateHudIfPossible();
 }
 
 function selectMany(rect: DragRect): void {
@@ -383,6 +385,7 @@ function selectMany(rect: DragRect): void {
       .map((entity) => entity.id),
   );
   state.renderer.setSelection(state.selectedIds);
+  updateHudIfPossible();
 }
 
 function clearSelection(): void {
