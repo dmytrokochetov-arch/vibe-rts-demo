@@ -21,6 +21,7 @@ interface ClientState {
   snapshot?: GameSnapshot;
   selectedIds: Set<string>;
   dragStart?: { x: number; y: number };
+  dragButton?: number;
   dragRect?: DragRect;
   renderer: Renderer;
 }
@@ -181,15 +182,27 @@ function wireCanvas(): void {
   canvasElement.addEventListener("contextmenu", (event) => event.preventDefault());
 
   canvasElement.addEventListener("pointerdown", (event) => {
-    canvasElement.setPointerCapture(event.pointerId);
     const point = { x: event.clientX, y: event.clientY };
     if (event.button === 0) {
-      issueContextCommand(point);
+      event.preventDefault();
+      canvasElement.setPointerCapture(event.pointerId);
+      state.dragStart = point;
+      state.dragButton = event.button;
+      state.dragRect = undefined;
       return;
     }
-    if (event.button !== 2) return;
-    state.dragStart = point;
-    state.dragRect = undefined;
+    if (event.button === 2) {
+      event.preventDefault();
+      const entity = state.renderer.ownedUnitAt(point.x, point.y, state.playerId);
+      if (entity && entity.ownerId === state.playerId && entity.role === "unit") {
+        canvasElement.setPointerCapture(event.pointerId);
+        state.dragStart = point;
+        state.dragButton = event.button;
+        state.dragRect = undefined;
+      } else {
+        issueContextCommand(point);
+      }
+    }
   });
 
   canvasElement.addEventListener("pointermove", (event) => {
@@ -201,18 +214,30 @@ function wireCanvas(): void {
 
   canvasElement.addEventListener("pointerup", (event) => {
     if (!state.dragStart) return;
+    event.preventDefault();
     const end = { x: event.clientX, y: event.clientY };
     const dragRect = normalizeRect(state.dragStart, end);
     const isClick = dragRect.width < 6 && dragRect.height < 6;
     if (isClick) {
-      selectSingle(end);
+      const entity = state.renderer.ownedUnitAt(end.x, end.y, state.playerId);
+      if (entity) {
+        selectSingle(end);
+      } else if (state.dragButton === 0) {
+        issueContextCommand(end);
+      } else {
+        selectSingle(end);
+      }
     } else {
       selectMany(dragRect);
     }
-    state.dragStart = undefined;
-    state.dragRect = undefined;
-    state.renderer.setDragRect(undefined);
+    resetDragSelection();
+    if (canvasElement.hasPointerCapture(event.pointerId)) {
+      canvasElement.releasePointerCapture(event.pointerId);
+    }
   });
+
+  canvasElement.addEventListener("pointercancel", resetDragSelection);
+  canvasElement.addEventListener("lostpointercapture", resetDragSelection);
 }
 
 function handleJoinResult(result: { ok: boolean; roomCode?: string; error?: string }): void {
@@ -293,9 +318,9 @@ function issueContextCommand(point: { x: number; y: number }): void {
 }
 
 function selectSingle(point: { x: number; y: number }): void {
-  const entity = state.renderer.entityAt(point.x, point.y);
+  const entity = state.renderer.ownedUnitAt(point.x, point.y, state.playerId);
   state.selectedIds.clear();
-  if (entity && entity.ownerId === state.playerId && entity.role === "unit") {
+  if (entity) {
     state.selectedIds.add(entity.id);
   }
   state.renderer.setSelection(state.selectedIds);
@@ -347,6 +372,13 @@ function normalizeRect(a: { x: number; y: number }, b: { x: number; y: number })
     width: Math.abs(a.x - b.x),
     height: Math.abs(a.y - b.y),
   };
+}
+
+function resetDragSelection(): void {
+  state.dragStart = undefined;
+  state.dragButton = undefined;
+  state.dragRect = undefined;
+  state.renderer.setDragRect(undefined);
 }
 
 function required<T extends Element = HTMLElement>(selector: string): T {

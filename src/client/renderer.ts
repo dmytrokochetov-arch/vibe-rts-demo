@@ -91,39 +91,35 @@ const TERRAIN_SEED = 7331;
 const MIN_HIT_RADIUS = 10;
 const TERRAIN_ROADS: readonly TerrainRoad[] = [
   {
-    from: { x: WORLD_WIDTH * 0.08, y: WORLD_HEIGHT * 0.31 },
-    to: { x: WORLD_WIDTH * 0.92, y: WORLD_HEIGHT * 0.58 },
-    width: 46,
-  },
-  {
-    from: { x: WORLD_WIDTH * 0.28, y: WORLD_HEIGHT * 0.92 },
-    to: { x: WORLD_WIDTH * 0.63, y: WORLD_HEIGHT * 0.1 },
-    width: 34,
+    from: { x: WORLD_WIDTH * 0.08, y: WORLD_HEIGHT * 0.58 },
+    to: { x: WORLD_WIDTH * 0.92, y: WORLD_HEIGHT * 0.46 },
+    width: 26,
   },
   {
     from: { x: WORLD_WIDTH * 0.12, y: WORLD_HEIGHT * 0.76 },
-    to: { x: WORLD_WIDTH * 0.42, y: WORLD_HEIGHT * 0.63 },
-    width: 28,
+    to: { x: WORLD_WIDTH * 0.36, y: WORLD_HEIGHT * 0.68 },
+    width: 18,
+  },
+  {
+    from: { x: WORLD_WIDTH * 0.66, y: WORLD_HEIGHT * 0.3 },
+    to: { x: WORLD_WIDTH * 0.88, y: WORLD_HEIGHT * 0.24 },
+    width: 18,
   },
 ];
 const TERRAIN_PADS: readonly TerrainPad[] = [
-  { x: WORLD_WIDTH * 0.16, y: WORLD_HEIGHT * 0.18, width: 205, height: 132, rotation: 0.08 },
-  { x: WORLD_WIDTH * 0.84, y: WORLD_HEIGHT * 0.82, width: 218, height: 142, rotation: 0.08 },
-  { x: WORLD_WIDTH * 0.5, y: WORLD_HEIGHT * 0.49, width: 156, height: 106, rotation: -0.2 },
-  { x: WORLD_WIDTH * 0.74, y: WORLD_HEIGHT * 0.27, width: 136, height: 92, rotation: 0.22 },
+  { x: WORLD_WIDTH * 0.16, y: WORLD_HEIGHT * 0.18, width: 180, height: 106, rotation: 0.04 },
+  { x: WORLD_WIDTH * 0.84, y: WORLD_HEIGHT * 0.82, width: 188, height: 110, rotation: 0.04 },
+  { x: WORLD_WIDTH * 0.52, y: WORLD_HEIGHT * 0.48, width: 132, height: 84, rotation: -0.08 },
+  { x: WORLD_WIDTH * 0.74, y: WORLD_HEIGHT * 0.27, width: 112, height: 76, rotation: 0.12 },
 ];
 const TERRAIN_DECORATIONS: readonly TerrainDecoration[] = [
-  { type: "scorch", x: WORLD_WIDTH * 0.38, y: WORLD_HEIGHT * 0.26, scale: 1.05, rotation: 0.4 },
-  { type: "scorch", x: WORLD_WIDTH * 0.62, y: WORLD_HEIGHT * 0.72, scale: 1.28, rotation: -0.25 },
-  { type: "scorch", x: WORLD_WIDTH * 0.49, y: WORLD_HEIGHT * 0.54, scale: 0.82, rotation: 0.15 },
+  { type: "scorch", x: WORLD_WIDTH * 0.38, y: WORLD_HEIGHT * 0.26, scale: 0.76, rotation: 0.4 },
+  { type: "scorch", x: WORLD_WIDTH * 0.62, y: WORLD_HEIGHT * 0.72, scale: 0.88, rotation: -0.25 },
   { type: "rocks", x: WORLD_WIDTH * 0.18, y: WORLD_HEIGHT * 0.54, scale: 1.05, rotation: -0.4 },
   { type: "rocks", x: WORLD_WIDTH * 0.7, y: WORLD_HEIGHT * 0.44, scale: 0.9, rotation: 0.2 },
-  { type: "rocks", x: WORLD_WIDTH * 0.44, y: WORLD_HEIGHT * 0.82, scale: 1.16, rotation: 0.5 },
-  { type: "barrier", x: WORLD_WIDTH * 0.31, y: WORLD_HEIGHT * 0.39, scale: 1.0, rotation: -0.36 },
-  { type: "barrier", x: WORLD_WIDTH * 0.58, y: WORLD_HEIGHT * 0.36, scale: 0.86, rotation: 0.32 },
-  { type: "barrier", x: WORLD_WIDTH * 0.75, y: WORLD_HEIGHT * 0.66, scale: 0.92, rotation: -0.18 },
-  { type: "wreck", x: WORLD_WIDTH * 0.52, y: WORLD_HEIGHT * 0.22, scale: 0.95, rotation: 0.55 },
-  { type: "wreck", x: WORLD_WIDTH * 0.27, y: WORLD_HEIGHT * 0.69, scale: 0.84, rotation: -0.28 },
+  { type: "barrier", x: WORLD_WIDTH * 0.31, y: WORLD_HEIGHT * 0.39, scale: 0.86, rotation: -0.26 },
+  { type: "barrier", x: WORLD_WIDTH * 0.75, y: WORLD_HEIGHT * 0.66, scale: 0.78, rotation: -0.12 },
+  { type: "wreck", x: WORLD_WIDTH * 0.52, y: WORLD_HEIGHT * 0.22, scale: 0.76, rotation: 0.55 },
 ];
 const TERRAIN_RIDGES: readonly TerrainRidge[] = [
   {
@@ -202,32 +198,20 @@ export class Renderer {
   }
 
   entityAt(clientX: number, clientY: number): EntityState | undefined {
-    if (!this.snapshot || !this.isInsideWorld(clientX, clientY)) {
+    return this.pickEntity(clientX, clientY, () => true);
+  }
+
+  ownedUnitAt(clientX: number, clientY: number, ownerId?: string): EntityState | undefined {
+    if (!ownerId) {
       return undefined;
     }
 
-    const world = this.screenToWorld(clientX, clientY);
-    let bestEntity: EntityState | undefined;
-    let bestDistance = Number.POSITIVE_INFINITY;
-
-    for (const entity of this.snapshot.entities) {
-      const distance = Math.hypot(entity.x - world.x, entity.y - world.y);
-      const hitRadius = entity.radius + MIN_HIT_RADIUS / this.camera.zoom;
-
-      if (distance > hitRadius) {
-        continue;
-      }
-
-      const unitBias = entity.role === "unit" ? -4 : 0;
-      const score = distance - entity.radius + unitBias;
-
-      if (score < bestDistance) {
-        bestDistance = score;
-        bestEntity = entity;
-      }
-    }
-
-    return bestEntity;
+    return this.pickEntity(
+      clientX,
+      clientY,
+      (entity) => entity.ownerId === ownerId && entity.role === "unit",
+      true,
+    );
   }
 
   entitiesInRect(rect: DragRect): EntityState[] {
@@ -240,7 +224,7 @@ export class Renderer {
 
     const worldRect = this.dragRectToWorldRect(rect);
 
-    return this.snapshot.entities.filter((entity) => circleIntersectsRect(entity, entity.radius, worldRect));
+    return this.snapshot.entities.filter((entity) => circleIntersectsRect(entity, selectionHitRadius(entity), worldRect));
   }
 
   render(): void {
@@ -296,6 +280,44 @@ export class Renderer {
       x: clientX - rect.left,
       y: clientY - rect.top,
     };
+  }
+
+  private pickEntity(
+    clientX: number,
+    clientY: number,
+    predicate: (entity: EntityState) => boolean,
+    preferUnits = false,
+  ): EntityState | undefined {
+    if (!this.snapshot || !this.isInsideWorld(clientX, clientY)) {
+      return undefined;
+    }
+
+    const world = this.screenToWorld(clientX, clientY);
+    let bestEntity: EntityState | undefined;
+    let bestScore = Number.POSITIVE_INFINITY;
+
+    for (const entity of this.snapshot.entities) {
+      if (!predicate(entity)) {
+        continue;
+      }
+
+      const distance = Math.hypot(entity.x - world.x, entity.y - world.y);
+      const hitRadius = selectionHitRadius(entity) + MIN_HIT_RADIUS / this.camera.zoom;
+
+      if (distance > hitRadius) {
+        continue;
+      }
+
+      const unitBias = entity.role === "unit" ? (preferUnits ? -100 : -12) : 0;
+      const score = distance - hitRadius + unitBias;
+
+      if (score < bestScore) {
+        bestScore = score;
+        bestEntity = entity;
+      }
+    }
+
+    return bestEntity;
   }
 
   private clientRectToCanvasRect(rect: DragRect): DragRect {
@@ -589,7 +611,6 @@ export class Renderer {
       const isSelected = this.selection.has(entity.id);
 
       if (isSelected) {
-        this.drawSelectionRing(entity);
         this.drawRange(entity, palette);
       }
 
@@ -601,6 +622,10 @@ export class Renderer {
 
       this.drawHealthBar(entity);
       this.drawOwnerChevron(entity, palette);
+
+      if (isSelected) {
+        this.drawSelectionRing(entity);
+      }
     }
   }
 
@@ -735,17 +760,17 @@ export class Renderer {
 
     for (const field of fields) {
       this.ctx.save();
-      this.ctx.fillStyle = "rgba(82, 211, 172, 0.09)";
+      this.ctx.fillStyle = "rgba(82, 211, 172, 0.06)";
       this.ctx.beginPath();
       this.ctx.ellipse(field.x, field.y, field.radiusX, field.radiusY, 0, 0, Math.PI * 2);
       this.ctx.fill();
 
-      for (let index = 0; index < 18; index += 1) {
+      for (let index = 0; index < 10; index += 1) {
         const angle = hashFloat(index, field.x, TERRAIN_SEED) * Math.PI * 2;
         const distance = Math.sqrt(hashFloat(index, field.y, TERRAIN_SEED + 9));
         const x = field.x + Math.cos(angle) * field.radiusX * 0.82 * distance;
         const y = field.y + Math.sin(angle) * field.radiusY * 0.82 * distance;
-        const size = 8 + hashFloat(index, field.radiusX, TERRAIN_SEED + 17) * 12;
+        const size = 7 + hashFloat(index, field.radiusX, TERRAIN_SEED + 17) * 8;
 
         this.drawOreCrystal(x, y, size);
       }
@@ -984,31 +1009,31 @@ export class Renderer {
 
     ctx.save();
     ctx.lineCap = "round";
-    ctx.strokeStyle = "rgba(4, 7, 8, 0.54)";
-    ctx.lineWidth = road.width + 18;
+    ctx.strokeStyle = "rgba(4, 7, 8, 0.34)";
+    ctx.lineWidth = road.width + 10;
     ctx.beginPath();
     ctx.moveTo(road.from.x + normalX * 5, road.from.y + normalY * 5);
     ctx.lineTo(road.to.x + normalX * 5, road.to.y + normalY * 5);
     ctx.stroke();
-    ctx.strokeStyle = "rgba(74, 81, 75, 0.8)";
+    ctx.strokeStyle = "rgba(72, 82, 74, 0.54)";
     ctx.lineWidth = road.width;
     ctx.beginPath();
     ctx.moveTo(road.from.x, road.from.y);
     ctx.lineTo(road.to.x, road.to.y);
     ctx.stroke();
-    ctx.strokeStyle = "rgba(156, 162, 141, 0.34)";
-    ctx.lineWidth = 3 / this.camera.zoom;
+    ctx.strokeStyle = "rgba(174, 183, 156, 0.18)";
+    ctx.lineWidth = 2 / this.camera.zoom;
     ctx.beginPath();
     ctx.moveTo(road.from.x - normalX * road.width * 0.33, road.from.y - normalY * road.width * 0.33);
     ctx.lineTo(road.to.x - normalX * road.width * 0.33, road.to.y - normalY * road.width * 0.33);
     ctx.stroke();
-    ctx.strokeStyle = "rgba(10, 15, 15, 0.42)";
+    ctx.strokeStyle = "rgba(10, 15, 15, 0.24)";
     ctx.beginPath();
     ctx.moveTo(road.from.x + normalX * road.width * 0.38, road.from.y + normalY * road.width * 0.38);
     ctx.lineTo(road.to.x + normalX * road.width * 0.38, road.to.y + normalY * road.width * 0.38);
     ctx.stroke();
-    ctx.strokeStyle = "rgba(227, 232, 204, 0.2)";
-    ctx.lineWidth = 2 / this.camera.zoom;
+    ctx.strokeStyle = "rgba(227, 232, 204, 0.13)";
+    ctx.lineWidth = 1.4 / this.camera.zoom;
     ctx.setLineDash([24 / this.camera.zoom, 20 / this.camera.zoom]);
     ctx.beginPath();
     ctx.moveTo(road.from.x, road.from.y);
@@ -1023,25 +1048,25 @@ export class Renderer {
     ctx.save();
     ctx.translate(pad.x, pad.y);
     ctx.rotate(pad.rotation);
-    ctx.fillStyle = "rgba(4, 7, 8, 0.5)";
+    ctx.fillStyle = "rgba(4, 7, 8, 0.28)";
     roundedRectPath(ctx, -pad.width / 2 + 8, -pad.height / 2 + 12, pad.width, pad.height, 9);
     ctx.fill();
-    ctx.fillStyle = "rgba(129, 136, 121, 0.56)";
+    ctx.fillStyle = "rgba(118, 132, 111, 0.34)";
     roundedRectPath(ctx, -pad.width / 2, -pad.height / 2, pad.width, pad.height, 9);
     ctx.fill();
-    ctx.fillStyle = "rgba(213, 220, 190, 0.11)";
+    ctx.fillStyle = "rgba(213, 220, 190, 0.07)";
     roundedRectPath(ctx, -pad.width / 2 + 7, -pad.height / 2 + 6, pad.width - 14, pad.height * 0.28, 6);
     ctx.fill();
-    ctx.strokeStyle = "rgba(235, 241, 215, 0.24)";
+    ctx.strokeStyle = "rgba(235, 241, 215, 0.14)";
     ctx.lineWidth = 1.4 / this.camera.zoom;
     roundedRectPath(ctx, -pad.width / 2, -pad.height / 2, pad.width, pad.height, 9);
     ctx.stroke();
-    ctx.strokeStyle = "rgba(6, 10, 11, 0.48)";
+    ctx.strokeStyle = "rgba(6, 10, 11, 0.28)";
     ctx.beginPath();
     ctx.moveTo(-pad.width / 2 + 10, pad.height / 2 - 3);
     ctx.lineTo(pad.width / 2 - 8, pad.height / 2 - 3);
     ctx.stroke();
-    ctx.strokeStyle = "rgba(23, 31, 31, 0.32)";
+    ctx.strokeStyle = "rgba(23, 31, 31, 0.18)";
     ctx.lineWidth = 1 / this.camera.zoom;
     ctx.beginPath();
     ctx.moveTo(-pad.width * 0.34, -pad.height * 0.5);
@@ -1062,13 +1087,13 @@ export class Renderer {
     const highlightPoints = ridge.points.map((point) => ({ x: point.x - 8, y: point.y - 10 }));
 
     ctx.save();
-    ctx.fillStyle = "rgba(4, 7, 7, 0.32)";
+    ctx.fillStyle = "rgba(4, 7, 7, 0.18)";
     polygon(ctx, shadowPoints);
     ctx.fill();
-    ctx.fillStyle = "rgba(43, 64, 46, 0.74)";
+    ctx.fillStyle = "rgba(43, 64, 46, 0.42)";
     polygon(ctx, ridge.points);
     ctx.fill();
-    ctx.strokeStyle = "rgba(218, 229, 181, 0.18)";
+    ctx.strokeStyle = "rgba(218, 229, 181, 0.1)";
     ctx.lineWidth = 2 / this.camera.zoom;
     ctx.beginPath();
     ctx.moveTo(highlightPoints[0].x, highlightPoints[0].y);
@@ -1214,7 +1239,7 @@ export class Renderer {
 
   private drawTerrain(): void {
     const ctx = this.ctx;
-    const cellSize = 120;
+    const cellSize = 160;
 
     ctx.save();
     ctx.fillStyle = "#26342b";
@@ -1223,12 +1248,12 @@ export class Renderer {
     for (let y = 0; y <= Math.ceil(WORLD_HEIGHT / cellSize); y += 1) {
       for (let x = 0; x <= Math.ceil(WORLD_WIDTH / cellSize); x += 1) {
         const value = hashFloat(x, y, TERRAIN_SEED);
-        ctx.fillStyle = value > 0.58 ? "rgba(111, 127, 87, 0.14)" : "rgba(21, 30, 27, 0.1)";
+        ctx.fillStyle = value > 0.62 ? "rgba(111, 127, 87, 0.08)" : "rgba(21, 30, 27, 0.05)";
         ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
       }
     }
 
-    ctx.strokeStyle = "rgba(213, 220, 171, 0.11)";
+    ctx.strokeStyle = "rgba(213, 220, 171, 0.06)";
     ctx.lineWidth = 1 / this.camera.zoom;
     ctx.beginPath();
 
@@ -1360,11 +1385,11 @@ function clamp(value: number, min: number, max: number): number {
 
 function createOreFields(): OreField[] {
   return [
-    { x: WORLD_WIDTH * 0.19, y: WORLD_HEIGHT * 0.2, radiusX: 150, radiusY: 88 },
-    { x: WORLD_WIDTH * 0.78, y: WORLD_HEIGHT * 0.78, radiusX: 165, radiusY: 95 },
-    { x: WORLD_WIDTH * 0.52, y: WORLD_HEIGHT * 0.48, radiusX: 185, radiusY: 110 },
-    { x: WORLD_WIDTH * 0.32, y: WORLD_HEIGHT * 0.76, radiusX: 120, radiusY: 78 },
-    { x: WORLD_WIDTH * 0.74, y: WORLD_HEIGHT * 0.27, radiusX: 118, radiusY: 74 },
+    { x: WORLD_WIDTH * 0.19, y: WORLD_HEIGHT * 0.2, radiusX: 118, radiusY: 66 },
+    { x: WORLD_WIDTH * 0.78, y: WORLD_HEIGHT * 0.78, radiusX: 126, radiusY: 72 },
+    { x: WORLD_WIDTH * 0.52, y: WORLD_HEIGHT * 0.48, radiusX: 136, radiusY: 78 },
+    { x: WORLD_WIDTH * 0.32, y: WORLD_HEIGHT * 0.76, radiusX: 104, radiusY: 62 },
+    { x: WORLD_WIDTH * 0.74, y: WORLD_HEIGHT * 0.27, radiusX: 102, radiusY: 60 },
   ];
 }
 
@@ -1415,6 +1440,22 @@ function paletteForEntity(entity: EntityState, playerById: ReadonlyMap<string, P
   const player = playerById.get(entity.ownerId);
 
   return player ? PLAYER_PALETTES[player.color] : NEUTRAL_PALETTE;
+}
+
+function selectionHitRadius(entity: EntityState): number {
+  if (entity.role === "building") {
+    return entity.radius * 1.08;
+  }
+
+  if (entity.kind === "artillery" || entity.kind === "harvester") {
+    return entity.radius * 1.85;
+  }
+
+  if (entity.kind === "tank") {
+    return entity.radius * 1.65;
+  }
+
+  return entity.radius * 1.45;
 }
 
 function polygon(ctx: CanvasRenderingContext2D, points: readonly Vec2[]): void {
