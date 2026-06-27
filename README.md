@@ -42,10 +42,10 @@ The server protocol supports creating rooms, joining rooms, readying up, queuein
 
 Expected browser controls for the demo:
 
-- Click an owned unit to select it.
-- Drag over owned units to select a group.
-- Right-click the map to move selected units.
-- Right-click an enemy unit or building to attack with selected units.
+- Right-click an owned unit to select it.
+- Right-drag over owned units to select a group.
+- Left-click the map to move selected units without clearing selection.
+- Left-click an enemy unit or building to attack with selected units without clearing selection.
 - Queue units from the production controls: Harvester, Rifle Squad, Tank, and Artillery.
 - Press **Add Bot** after creating a room to add an AI opponent for local testing.
 - Use the visible Ready control to start once a second player or bot has joined.

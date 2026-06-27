@@ -183,10 +183,11 @@ function wireCanvas(): void {
   canvasElement.addEventListener("pointerdown", (event) => {
     canvasElement.setPointerCapture(event.pointerId);
     const point = { x: event.clientX, y: event.clientY };
-    if (event.button === 2) {
+    if (event.button === 0) {
       issueContextCommand(point);
       return;
     }
+    if (event.button !== 2) return;
     state.dragStart = point;
     state.dragRect = undefined;
   });

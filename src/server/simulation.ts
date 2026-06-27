@@ -12,6 +12,7 @@ import {
   type ProductionItem,
   type ProjectileEvent,
   type RoomPhase,
+  type Vec2,
   type UnitKind,
 } from "../shared/protocol.js";
 
@@ -35,10 +36,20 @@ export interface GameState {
 }
 
 const STARTING_RESOURCES = 620;
-const RESOURCE_PER_SECOND_PER_REFINERY = 18;
-const RESOURCE_PER_SECOND_PER_HARVESTER = 8;
 const EVENT_TTL_MS = 700;
+const HARVESTER_CAPACITY = 120;
+const HARVEST_RATE_PER_SECOND = 44;
+const HARVEST_RADIUS = 38;
+const DELIVERY_RADIUS = 58;
+const BOT_ATTACK_GRACE_TICKS = 220;
 const PLAYER_COLORS: PlayerColor[] = ["red", "blue"];
+const ORE_FIELDS: readonly Vec2[] = [
+  { x: WORLD_WIDTH * 0.19, y: WORLD_HEIGHT * 0.2 },
+  { x: WORLD_WIDTH * 0.78, y: WORLD_HEIGHT * 0.78 },
+  { x: WORLD_WIDTH * 0.52, y: WORLD_HEIGHT * 0.48 },
+  { x: WORLD_WIDTH * 0.32, y: WORLD_HEIGHT * 0.76 },
+  { x: WORLD_WIDTH * 0.74, y: WORLD_HEIGHT * 0.27 },
+];
 
 export function createGame(roomCode: string): GameState {
   return {
@@ -174,7 +185,7 @@ export function stepGame(game: GameState, deltaMs: number): void {
   if (game.phase === "gameover") return;
 
   game.tick += 1;
-  grantIncome(game, deltaMs);
+  processHarvesters(game, deltaMs);
   processProduction(game, deltaMs);
   processOrders(game, deltaMs);
   removeDeadEntities(game);
@@ -194,6 +205,8 @@ export function runBotTurn(game: GameState, botPlayerId: string): void {
       if (queueUnit(game, botPlayerId, kind).ok) break;
     }
   }
+
+  if (game.tick < BOT_ATTACK_GRACE_TICKS) return;
 
   const target =
     game.entities.find((entity) => entity.ownerId !== botPlayerId && entity.kind === "hq") ??
@@ -287,6 +300,9 @@ function addUnit(game: GameState, ownerId: string, kind: UnitKind, x: number, y:
     cooldownMs: definition.cooldownMs,
     cooldownRemainingMs: 0,
     buildTimeMs: definition.buildTimeMs,
+    cargo: kind === "harvester" ? 0 : undefined,
+    cargoCapacity: kind === "harvester" ? HARVESTER_CAPACITY : undefined,
+    harvestMode: kind === "harvester" ? "toOre" : undefined,
     order: { type: "idle" },
   };
   game.entities.push(entity);
@@ -322,6 +338,7 @@ function processOrders(game: GameState, deltaMs: number): void {
 
     if (entity.order.type === "move") {
       moveToward(entity, entity.order, deltaMs);
+      tryAutoAttack(game, entity);
     }
 
     const order = entity.order;
@@ -336,20 +353,99 @@ function processOrders(game: GameState, deltaMs: number): void {
       if (distance > entity.range) {
         moveToward(entity, target, deltaMs);
       } else if (entity.cooldownRemainingMs <= 0) {
-        target.hp -= entity.damage;
-        entity.cooldownRemainingMs = entity.cooldownMs;
-        game.projectiles.push({
-          id: createId(game, "shot"),
-          from: { x: entity.x, y: entity.y },
-          to: { x: target.x, y: target.y },
-          ownerId: entity.ownerId,
-          ageMs: 0,
-        });
-        if (target.hp <= 0) {
-          game.explosions.push({ id: createId(game, "boom"), x: target.x, y: target.y, ageMs: 0 });
-        }
+        fireAt(game, entity, target);
       }
     }
+
+    if (entity.order.type === "idle") {
+      tryAutoAttack(game, entity);
+    }
+  }
+}
+
+function processHarvesters(game: GameState, deltaMs: number): void {
+  for (const harvester of game.entities) {
+    if (harvester.kind !== "harvester" || harvester.role !== "unit" || harvester.hp <= 0) continue;
+    if (harvester.order.type === "attack") continue;
+
+    harvester.cargo ??= 0;
+    harvester.cargoCapacity ??= HARVESTER_CAPACITY;
+    harvester.harvestMode ??= "toOre";
+
+    if (harvester.harvestMode === "toOre") {
+      const ore = nearestPoint(harvester, ORE_FIELDS);
+      if (distanceBetween(harvester, ore) > HARVEST_RADIUS) {
+        moveToward(harvester, ore, deltaMs);
+        continue;
+      }
+      harvester.harvestMode = "harvesting";
+    }
+
+    if (harvester.harvestMode === "harvesting") {
+      harvester.cargo = Math.min(
+        harvester.cargoCapacity,
+        harvester.cargo + (HARVEST_RATE_PER_SECOND * deltaMs) / 1000,
+      );
+      if (harvester.cargo >= harvester.cargoCapacity) {
+        harvester.harvestMode = "toBase";
+      }
+      continue;
+    }
+
+    if (harvester.harvestMode === "toBase") {
+      const base = nearestDropoff(game, harvester);
+      if (!base) continue;
+      if (distanceBetween(harvester, base) > DELIVERY_RADIUS) {
+        moveToward(harvester, base, deltaMs);
+        continue;
+      }
+
+      const owner = findPlayer(game, harvester.ownerId);
+      if (owner) owner.resources += Math.floor(harvester.cargo);
+      harvester.cargo = 0;
+      harvester.harvestMode = "toOre";
+    }
+  }
+}
+
+function tryAutoAttack(game: GameState, entity: EntityState): void {
+  if (entity.cooldownRemainingMs > 0 || entity.damage <= 0 || entity.range <= 0) return;
+
+  const target = nearestEnemyInRange(game, entity);
+  if (!target) return;
+
+  fireAt(game, entity, target);
+}
+
+function nearestEnemyInRange(game: GameState, entity: EntityState): EntityState | undefined {
+  let bestTarget: EntityState | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const candidate of game.entities) {
+    if (candidate.ownerId === entity.ownerId || candidate.hp <= 0) continue;
+
+    const distance = distanceBetween(entity, candidate);
+    if (distance > entity.range || distance >= bestDistance) continue;
+
+    bestTarget = candidate;
+    bestDistance = distance;
+  }
+
+  return bestTarget;
+}
+
+function fireAt(game: GameState, attacker: EntityState, target: EntityState): void {
+  target.hp -= attacker.damage;
+  attacker.cooldownRemainingMs = attacker.cooldownMs;
+  game.projectiles.push({
+    id: createId(game, "shot"),
+    from: { x: attacker.x, y: attacker.y },
+    to: { x: target.x, y: target.y },
+    ownerId: attacker.ownerId,
+    ageMs: 0,
+  });
+  if (target.hp <= 0) {
+    game.explosions.push({ id: createId(game, "boom"), x: target.x, y: target.y, ageMs: 0 });
   }
 }
 
@@ -384,20 +480,51 @@ function updateVictory(game: GameState): void {
   }
 }
 
-function grantIncome(game: GameState, deltaMs: number): void {
-  for (const player of game.players) {
-    const refineries = game.entities.filter((entity) => entity.ownerId === player.id && entity.kind === "refinery").length;
-    const harvesters = game.entities.filter((entity) => entity.ownerId === player.id && entity.kind === "harvester").length;
-    player.resources +=
-      ((refineries * RESOURCE_PER_SECOND_PER_REFINERY + harvesters * RESOURCE_PER_SECOND_PER_HARVESTER) * deltaMs) / 1000;
-  }
-}
-
 function hasMissingAttackTarget(game: GameState, entity: EntityState): boolean {
   const order = entity.order;
   if (order.type !== "attack") return false;
 
   return !game.entities.some((targetEntity) => targetEntity.id === order.targetId);
+}
+
+function nearestDropoff(game: GameState, harvester: EntityState): EntityState | undefined {
+  const dropoffs = game.entities.filter(
+    (entity) =>
+      entity.ownerId === harvester.ownerId &&
+      entity.role === "building" &&
+      (entity.kind === "refinery" || entity.kind === "hq") &&
+      entity.hp > 0,
+  );
+
+  return nearestEntity(harvester, dropoffs);
+}
+
+function nearestEntity(from: Vec2, entities: readonly EntityState[]): EntityState | undefined {
+  let closest: EntityState | undefined;
+  let closestDistance = Number.POSITIVE_INFINITY;
+
+  for (const entity of entities) {
+    const distance = distanceBetween(from, entity);
+    if (distance >= closestDistance) continue;
+    closest = entity;
+    closestDistance = distance;
+  }
+
+  return closest;
+}
+
+function nearestPoint(from: Vec2, points: readonly Vec2[]): Vec2 {
+  let closest = points[0];
+  let closestDistance = Number.POSITIVE_INFINITY;
+
+  for (const point of points) {
+    const distance = distanceBetween(from, point);
+    if (distance >= closestDistance) continue;
+    closest = point;
+    closestDistance = distance;
+  }
+
+  return closest;
 }
 
 function chooseBotBuildOrder(game: GameState, botPlayerId: string): UnitKind[] {

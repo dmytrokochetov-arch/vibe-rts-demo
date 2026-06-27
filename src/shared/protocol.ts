@@ -45,6 +45,9 @@ export interface EntityState {
   cooldownMs: number;
   cooldownRemainingMs: number;
   buildTimeMs: number;
+  cargo?: number;
+  cargoCapacity?: number;
+  harvestMode?: "toOre" | "harvesting" | "toBase";
   order: Order;
 }
 

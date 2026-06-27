@@ -42,6 +42,29 @@ describe("authoritative RTS simulation", () => {
     expect(game.entities.filter((entity) => entity.ownerId === "p1" && entity.kind === "tank")).toHaveLength(2);
   });
 
+  test("does not create resources without harvester deliveries", () => {
+    const game = createGame("TEST");
+    addPlayer(game, "p1", "Red");
+    game.entities = game.entities.filter((entity) => entity.kind !== "harvester");
+    const startingResources = game.players[0].resources;
+
+    stepGame(game, 15000);
+
+    expect(game.players[0].resources).toBe(startingResources);
+  });
+
+  test("harvesters automatically gather ore and deliver it to base", () => {
+    const game = createGame("TEST");
+    addPlayer(game, "p1", "Red");
+    game.players[0].resources = 0;
+
+    for (let index = 0; index < 80; index += 1) {
+      stepGame(game, 500);
+    }
+
+    expect(game.players[0].resources).toBeGreaterThan(0);
+  });
+
   test("moves owned units toward commanded locations", () => {
     const game = createGame("TEST");
     addPlayer(game, "p1", "Red");
@@ -92,14 +115,14 @@ describe("authoritative RTS simulation", () => {
       entityIds: [redTank!.id],
       targetId: blueHq!.id,
     });
-    stepGame(game, redTank!.cooldownMs);
+    stepGame(game, 100);
 
     expect(result.ok).toBe(true);
     expect(game.phase).toBe("gameover");
     expect(game.winnerId).toBe("p1");
   });
 
-  test("adds a ready bot and gives it production plus attack orders", () => {
+  test("adds a ready bot that builds first and attacks after a short grace period", () => {
     const game = createGame("TEST");
     addPlayer(game, "p1", "Human");
     const bot = addBotPlayer(game, "bot-TEST");
@@ -117,7 +140,33 @@ describe("authoritative RTS simulation", () => {
       game.entities
         .filter((entity) => entity.ownerId === "bot-TEST" && entity.role === "unit")
         .some((entity) => entity.order.type === "attack"),
+    ).toBe(false);
+
+    game.tick = 220;
+    runBotTurn(game, "bot-TEST");
+
+    expect(
+      game.entities
+        .filter((entity) => entity.ownerId === "bot-TEST" && entity.role === "unit")
+        .some((entity) => entity.order.type === "attack"),
     ).toBe(true);
+  });
+
+  test("idle units automatically attack enemies in range", () => {
+    const game = createGame("TEST");
+    addPlayer(game, "p1", "Red");
+    addPlayer(game, "p2", "Blue");
+    const redTank = game.entities.find((entity) => entity.ownerId === "p1" && entity.kind === "tank");
+    const blueRifle = game.entities.find((entity) => entity.ownerId === "p2" && entity.kind === "rifle");
+    expect(redTank).toBeDefined();
+    expect(blueRifle).toBeDefined();
+    blueRifle!.x = redTank!.x + redTank!.range - 20;
+    blueRifle!.y = redTank!.y;
+    const startingHp = blueRifle!.hp;
+
+    stepGame(game, redTank!.cooldownMs);
+
+    expect(blueRifle!.hp).toBeLessThan(startingHp);
   });
 });
 

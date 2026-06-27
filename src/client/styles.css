@@ -265,17 +265,17 @@ button {
   left: 14px;
   z-index: 3;
   display: grid;
-  grid-template-columns: 140px minmax(240px, 1.2fr) minmax(220px, 0.9fr) minmax(180px, 0.8fr);
-  align-items: stretch;
+  grid-template-columns: 112px minmax(292px, max-content) minmax(180px, 1fr) minmax(160px, 0.75fr);
+  align-items: center;
   gap: 10px;
-  min-height: 116px;
-  padding: 10px;
+  min-height: 74px;
+  padding: 8px 10px;
   border-radius: 8px;
   pointer-events: auto;
 }
 
 .minimap {
-  min-height: 96px;
+  height: 58px;
   background:
     linear-gradient(rgba(0, 0, 0, 0.16) 1px, transparent 1px),
     linear-gradient(90deg, rgba(0, 0, 0, 0.16) 1px, transparent 1px),
@@ -286,36 +286,46 @@ button {
 }
 
 .production {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 2px;
+  scrollbar-width: thin;
 }
 
 .production button {
   display: grid;
-  grid-template-rows: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  flex: 0 0 70px;
+  min-height: 40px;
   min-width: 0;
-  padding: 8px;
-  background: rgba(46, 111, 115, 0.78);
+  gap: 4px;
+  padding: 5px 6px;
+  background: rgba(46, 111, 115, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .production button span {
   overflow: hidden;
-  font-size: 12px;
+  font-size: 10.5px;
+  line-height: 1.05;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .production button strong {
   color: #fef9c3;
-  font-size: 12px;
+  font-size: 10.5px;
+  line-height: 1.05;
 }
 
 .selection,
 .event-log {
   min-width: 0;
   overflow: auto;
-  padding: 10px;
+  padding: 8px;
   color: #e5eee9;
   background: rgba(255, 255, 255, 0.07);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -357,8 +367,8 @@ button {
     display: none;
   }
 
-  .production {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .production button {
+    flex-basis: 68px;
   }
 }
 
