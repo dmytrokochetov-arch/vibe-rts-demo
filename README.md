@@ -1,5 +1,11 @@
 # Vibe RTS Demo
 
+**Production:** https://vibe-rts-demo-production.up.railway.app
+
+**Railway:** https://railway.com/project/0890717c-a636-4a48-9091-283b1d2e0fc7/service/3f567b92-9461-4f9c-89ef-58f6d38314eb?environmentId=c663fde2-5e44-453c-9651-365b21475080
+
+**Railway workspace:** Guru Apps
+
 Browser RTS demo with an Express/Socket.IO game server and a Vite browser client. The server is authoritative, exposes a health endpoint at `/api/health`, and does not require a database, auth, or persistent secrets.
 
 ## Local Run
