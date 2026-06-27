@@ -32,8 +32,8 @@ PORT=3000 npm start
 
 1. Open the app in two browser tabs or two browser windows.
 2. Player one creates a room and shares the room code.
-3. Player two joins with the room code.
-4. Both players mark ready to start the match.
+3. Player two joins with the room code, or player one presses **Add Bot** for a local solo test.
+4. Both human players mark ready, or the solo player marks ready after adding the bot.
 5. Build units, issue move/attack orders, and destroy the opposing HQ to win.
 
 ## Game Controls
@@ -47,7 +47,8 @@ Expected browser controls for the demo:
 - Right-click the map to move selected units.
 - Right-click an enemy unit or building to attack with selected units.
 - Queue units from the production controls: Harvester, Rifle Squad, Tank, and Artillery.
-- Use the visible Ready control to start once both players have joined.
+- Press **Add Bot** after creating a room to add an AI opponent for local testing.
+- Use the visible Ready control to start once a second player or bot has joined.
 
 If the client control mapping changes during demo work, trust the visible browser controls and keep this section in sync with the final UI.
 

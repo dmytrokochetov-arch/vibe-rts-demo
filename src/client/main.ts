@@ -51,6 +51,7 @@ app.innerHTML = `
         </label>
         <div class="lobby-actions">
           <button data-create>Create Room</button>
+          <button data-bot disabled>Add Bot</button>
           <div class="join-row">
             <input data-join-code maxlength="4" placeholder="CODE" />
             <button data-join>Join</button>
@@ -95,6 +96,7 @@ const elements = {
   name: required<HTMLInputElement>("[data-name]"),
   joinCode: required<HTMLInputElement>("[data-join-code]"),
   create: required<HTMLButtonElement>("[data-create]"),
+  bot: required<HTMLButtonElement>("[data-bot]"),
   join: required<HTMLButtonElement>("[data-join]"),
   ready: required<HTMLButtonElement>("[data-ready]"),
   error: required("[data-error]"),
@@ -147,6 +149,18 @@ function wireLobby(): void {
 
   elements.join.addEventListener("click", () => {
     state.socket.emit("joinRoom", elements.joinCode.value, playerName(), (result) => handleJoinResult(result));
+  });
+
+  elements.bot.addEventListener("click", () => {
+    state.socket.emit("addBot", (result) => {
+      if (!result.ok) {
+        showError(result.error ?? "Could not add bot");
+        return;
+      }
+      elements.bot.disabled = true;
+      addLog("Bot joined");
+      showError("");
+    });
   });
 
   elements.ready.addEventListener("click", () => {
@@ -207,6 +221,7 @@ function handleJoinResult(result: { ok: boolean; roomCode?: string; error?: stri
   }
   state.roomCode = result.roomCode;
   elements.lobby.classList.add("compact");
+  elements.bot.disabled = false;
   showError("");
 }
 
@@ -227,6 +242,7 @@ function setSnapshot(snapshot: GameSnapshot): void {
 
 function updateHud(snapshot: GameSnapshot): void {
   const player = snapshot.players.find((candidate) => candidate.id === state.playerId);
+  const hasBot = snapshot.players.some((candidate) => candidate.isBot);
   elements.room.textContent = snapshot.roomCode;
   elements.ore.textContent = String(player?.resources ?? 0);
   elements.units.textContent = String(snapshot.entities.filter((entity) => entity.ownerId === state.playerId && entity.role === "unit").length);
@@ -235,7 +251,10 @@ function updateHud(snapshot: GameSnapshot): void {
       ? "Game Over"
       : snapshot.phase === "playing"
         ? "In Battle"
-        : `${snapshot.players.length}/2 Commanders`;
+        : hasBot
+          ? "Bot Ready"
+          : `${snapshot.players.length}/2 Commanders`;
+  elements.bot.disabled = !state.playerId || snapshot.phase !== "lobby" || snapshot.players.length >= 2;
 
   const selected = selectedEntities();
   elements.selection.textContent =

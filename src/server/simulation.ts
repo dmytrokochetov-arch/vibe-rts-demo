@@ -78,6 +78,17 @@ export function addPlayer(game: GameState, playerId: string, name: string): Resu
   return { ok: true, error: "", player };
 }
 
+export function addBotPlayer(game: GameState, playerId: string, name = "AI Commander"): Result<PlayerState> {
+  const result = addPlayer(game, playerId, name);
+  if (!result.ok || !result.player) return result;
+
+  result.player.isBot = true;
+  result.player.ready = true;
+  result.player.connected = true;
+
+  return result;
+}
+
 export function setPlayerReady(game: GameState, playerId: string, ready: boolean): Result {
   const player = findPlayer(game, playerId);
   if (!player) return { ok: false, error: "Player not found" };
@@ -169,6 +180,41 @@ export function stepGame(game: GameState, deltaMs: number): void {
   removeDeadEntities(game);
   ageEvents(game, deltaMs);
   updateVictory(game);
+}
+
+export function runBotTurn(game: GameState, botPlayerId: string): void {
+  if (game.phase !== "playing") return;
+
+  const bot = findPlayer(game, botPlayerId);
+  if (!bot?.isBot) return;
+
+  const activeProduction = game.production.filter((item) => item.playerId === botPlayerId).length;
+  if (activeProduction < 2) {
+    for (const kind of chooseBotBuildOrder(game, botPlayerId)) {
+      if (queueUnit(game, botPlayerId, kind).ok) break;
+    }
+  }
+
+  const target =
+    game.entities.find((entity) => entity.ownerId !== botPlayerId && entity.kind === "hq") ??
+    game.entities.find((entity) => entity.ownerId !== botPlayerId);
+  if (!target) return;
+
+  const attackers = game.entities.filter(
+    (entity) =>
+      entity.ownerId === botPlayerId &&
+      entity.role === "unit" &&
+      entity.kind !== "harvester" &&
+      (entity.order.type === "idle" || hasMissingAttackTarget(game, entity)),
+  );
+
+  if (attackers.length > 0) {
+    issueCommand(game, botPlayerId, {
+      type: "attack",
+      entityIds: attackers.map((entity) => entity.id),
+      targetId: target.id,
+    });
+  }
 }
 
 export function snapshotGame(game: GameState): GameSnapshot {
@@ -345,6 +391,21 @@ function grantIncome(game: GameState, deltaMs: number): void {
     player.resources +=
       ((refineries * RESOURCE_PER_SECOND_PER_REFINERY + harvesters * RESOURCE_PER_SECOND_PER_HARVESTER) * deltaMs) / 1000;
   }
+}
+
+function hasMissingAttackTarget(game: GameState, entity: EntityState): boolean {
+  const order = entity.order;
+  if (order.type !== "attack") return false;
+
+  return !game.entities.some((targetEntity) => targetEntity.id === order.targetId);
+}
+
+function chooseBotBuildOrder(game: GameState, botPlayerId: string): UnitKind[] {
+  const botUnits = game.entities.filter((entity) => entity.ownerId === botPlayerId && entity.role === "unit");
+  const harvesters = botUnits.filter((entity) => entity.kind === "harvester").length;
+  if (harvesters < 2) return ["harvester", "rifle", "tank"];
+
+  return ["tank", "rifle", "artillery", "harvester"];
 }
 
 function ageEvents(game: GameState, deltaMs: number): void {

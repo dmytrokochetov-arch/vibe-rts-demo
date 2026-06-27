@@ -1,10 +1,12 @@
 import { describe, expect, test } from "vitest";
 import { UNIT_DEFS, type ClientCommand } from "../src/shared/protocol";
 import {
+  addBotPlayer,
   addPlayer,
   createGame,
   issueCommand,
   queueUnit,
+  runBotTurn,
   snapshotGame,
   stepGame,
 } from "../src/server/simulation";
@@ -96,5 +98,34 @@ describe("authoritative RTS simulation", () => {
     expect(game.phase).toBe("gameover");
     expect(game.winnerId).toBe("p1");
   });
+
+  test("adds a ready bot and gives it production plus attack orders", () => {
+    const game = createGame("TEST");
+    addPlayer(game, "p1", "Human");
+    const bot = addBotPlayer(game, "bot-TEST");
+    setHumanReady(game, "p1");
+
+    expect(bot.ok).toBe(true);
+    expect(bot.player?.isBot).toBe(true);
+    expect(bot.player?.ready).toBe(true);
+    expect(game.phase).toBe("playing");
+
+    runBotTurn(game, "bot-TEST");
+
+    expect(game.production.some((item) => item.playerId === "bot-TEST")).toBe(true);
+    expect(
+      game.entities
+        .filter((entity) => entity.ownerId === "bot-TEST" && entity.role === "unit")
+        .some((entity) => entity.order.type === "attack"),
+    ).toBe(true);
+  });
 });
 
+function setHumanReady(game: ReturnType<typeof createGame>, playerId: string): void {
+  const player = game.players.find((candidate) => candidate.id === playerId);
+  if (!player) throw new Error("Missing player");
+  player.ready = true;
+  if (game.players.length === 2 && game.players.every((candidate) => candidate.ready)) {
+    game.phase = "playing";
+  }
+}

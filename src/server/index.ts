@@ -44,6 +44,8 @@ if (isProduction) {
   app.use(vite.middlewares);
 }
 
-server.listen(port, () => {
+const host = isProduction && process.env.RAILWAY_ENVIRONMENT_NAME ? undefined : "127.0.0.1";
+
+server.listen(port, host, () => {
   console.log(`Vibe RTS listening on http://localhost:${port}`);
 });

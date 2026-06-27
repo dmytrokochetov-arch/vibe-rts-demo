@@ -9,10 +9,12 @@ import {
   type UnitKind,
 } from "../shared/protocol.js";
 import {
+  addBotPlayer,
   addPlayer,
   createGame,
   issueCommand,
   queueUnit,
+  runBotTurn,
   setPlayerConnected,
   setPlayerReady,
   snapshotGame,
@@ -56,6 +58,33 @@ export function registerRoomHandlers(io: GameServer): void {
         return;
       }
       joinRuntime(io, socket, runtime, roomCode, name, callback);
+    });
+
+    socket.on("addBot", (callback) => {
+      const context = socketPlayers.get(socket.id);
+      if (!context) {
+        callback({ ok: false, error: "Create a room first" });
+        return;
+      }
+      const runtime = rooms.get(context.roomCode);
+      if (!runtime) {
+        callback({ ok: false, error: "Room not found" });
+        return;
+      }
+      if (runtime.game.players.length >= MAX_PLAYERS) {
+        callback({ ok: false, error: "Room is full" });
+        return;
+      }
+
+      const result = addBotPlayer(runtime.game, `bot-${context.roomCode}`);
+      if (!result.ok) {
+        callback({ ok: false, error: result.error });
+        return;
+      }
+
+      callback({ ok: true, roomCode: context.roomCode, playerId: context.playerId, color: result.player?.color });
+      emitRoomState(io, runtime, context.roomCode);
+      maybeStartLoop(io, runtime, context.roomCode);
     });
 
     socket.on("ready", () => {
@@ -157,6 +186,9 @@ function joinRuntime(
 function maybeStartLoop(io: GameServer, runtime: RoomRuntime, roomCode: string): void {
   if (runtime.loop || runtime.game.phase !== "playing") return;
   runtime.loop = setInterval(() => {
+    for (const player of runtime.game.players) {
+      if (player.isBot) runBotTurn(runtime.game, player.id);
+    }
     stepGame(runtime.game, TICK_MS);
     const snapshot = snapshotGame(runtime.game);
     io.to(roomCode).emit("gameSnapshot", snapshot);
@@ -177,7 +209,7 @@ function emitRoomState(io: GameServer, runtime: RoomRuntime, roomCode: string): 
 }
 
 function cleanupEmptyRoom(roomCode: string, runtime: RoomRuntime): void {
-  if (runtime.game.players.some((player) => player.connected)) return;
+  if (runtime.game.players.some((player) => player.connected && !player.isBot)) return;
   if (runtime.loop) clearInterval(runtime.loop);
   rooms.delete(roomCode);
 }

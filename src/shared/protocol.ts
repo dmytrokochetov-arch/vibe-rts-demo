@@ -26,6 +26,7 @@ export interface PlayerState {
   resources: number;
   ready: boolean;
   connected: boolean;
+  isBot?: boolean;
 }
 
 export interface EntityState {
@@ -105,6 +106,7 @@ export interface ServerToClientEvents {
 export interface ClientToServerEvents {
   createRoom: (name: string, callback: (result: JoinResult) => void) => void;
   joinRoom: (roomCode: string, name: string, callback: (result: JoinResult) => void) => void;
+  addBot: (callback: (result: JoinResult) => void) => void;
   ready: () => void;
   queueUnit: (kind: UnitKind) => void;
   command: (command: ClientCommand) => void;
@@ -181,4 +183,3 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDefinition> = {
   factory: { label: "Factory", hp: 520, radius: 44 },
   refinery: { label: "Refinery", hp: 430, radius: 38 },
 };
-
