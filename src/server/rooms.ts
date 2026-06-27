@@ -78,7 +78,8 @@ export function registerRoomHandlers(io: GameServer): void {
         return;
       }
 
-      const result = addBotPlayer(runtime.game, `bot-${context.roomCode}`);
+      const botNumber = runtime.game.players.filter((player) => player.isBot).length + 1;
+      const result = addBotPlayer(runtime.game, `bot-${context.roomCode}-${botNumber}`, `AI Commander ${botNumber}`);
       if (!result.ok) {
         callback({ ok: false, error: result.error });
         return;
@@ -136,6 +137,7 @@ export function registerRoomHandlers(io: GameServer): void {
       const players = runtime.game.players.map((player) => ({
         id: player.id,
         name: player.name,
+        isBot: player.isBot,
         ready: false,
         connected: player.connected,
       }));
@@ -143,7 +145,11 @@ export function registerRoomHandlers(io: GameServer): void {
       runtime.game = createGame(context.roomCode);
       runtime.playerSockets.clear();
       for (const player of players) {
-        addPlayer(runtime.game, player.id, player.name);
+        if (player.isBot) {
+          addBotPlayer(runtime.game, player.id, player.name);
+        } else {
+          addPlayer(runtime.game, player.id, player.name);
+        }
         setPlayerReady(runtime.game, player.id, false);
         setPlayerConnected(runtime.game, player.id, player.connected);
         const playerSocketId = [...socketPlayers.entries()].find(

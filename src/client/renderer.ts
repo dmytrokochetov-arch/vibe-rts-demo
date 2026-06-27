@@ -77,6 +77,20 @@ const PLAYER_PALETTES: Record<PlayerColor, Palette> = {
     light: "#c8f2ff",
     shadow: "rgba(14, 31, 72, 0.58)",
   },
+  green: {
+    accent: "#7ee787",
+    dark: "#1f6b42",
+    fill: "#31a66a",
+    light: "#d6ffd8",
+    shadow: "rgba(12, 64, 34, 0.56)",
+  },
+  yellow: {
+    accent: "#ffd166",
+    dark: "#8a6417",
+    fill: "#d69e2e",
+    light: "#fff1b8",
+    shadow: "rgba(80, 54, 10, 0.56)",
+  },
 };
 
 const NEUTRAL_PALETTE: Palette = {
@@ -1422,11 +1436,13 @@ function clamp(value: number, min: number, max: number): number {
 
 function createOreFields(): OreField[] {
   return [
-    { x: WORLD_WIDTH * 0.19, y: WORLD_HEIGHT * 0.2, radiusX: 118, radiusY: 66 },
-    { x: WORLD_WIDTH * 0.78, y: WORLD_HEIGHT * 0.78, radiusX: 126, radiusY: 72 },
+    { x: WORLD_WIDTH * 0.18, y: WORLD_HEIGHT * 0.2, radiusX: 118, radiusY: 66 },
+    { x: WORLD_WIDTH * 0.82, y: WORLD_HEIGHT * 0.8, radiusX: 126, radiusY: 72 },
+    { x: WORLD_WIDTH * 0.18, y: WORLD_HEIGHT * 0.8, radiusX: 112, radiusY: 66 },
+    { x: WORLD_WIDTH * 0.82, y: WORLD_HEIGHT * 0.2, radiusX: 112, radiusY: 66 },
     { x: WORLD_WIDTH * 0.52, y: WORLD_HEIGHT * 0.48, radiusX: 136, radiusY: 78 },
-    { x: WORLD_WIDTH * 0.32, y: WORLD_HEIGHT * 0.76, radiusX: 104, radiusY: 62 },
-    { x: WORLD_WIDTH * 0.74, y: WORLD_HEIGHT * 0.27, radiusX: 102, radiusY: 60 },
+    { x: WORLD_WIDTH * 0.35, y: WORLD_HEIGHT * 0.62, radiusX: 104, radiusY: 62 },
+    { x: WORLD_WIDTH * 0.65, y: WORLD_HEIGHT * 0.38, radiusX: 102, radiusY: 60 },
   ];
 }
 

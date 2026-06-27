@@ -46,13 +46,21 @@ const DELIVERY_RADIUS = 58;
 const BOT_ATTACK_GRACE_TICKS = 220;
 const ARTILLERY_SPLASH_RADIUS = 78;
 const ARTILLERY_SPLASH_DAMAGE_RATIO = 0.55;
-const PLAYER_COLORS: PlayerColor[] = ["red", "blue"];
+const PLAYER_COLORS: PlayerColor[] = ["red", "blue", "green", "yellow"];
+const STARTING_BASES: Record<PlayerColor, Vec2> = {
+  red: { x: WORLD_WIDTH * 0.14, y: WORLD_HEIGHT * 0.78 },
+  blue: { x: WORLD_WIDTH * 0.86, y: WORLD_HEIGHT * 0.22 },
+  green: { x: WORLD_WIDTH * 0.14, y: WORLD_HEIGHT * 0.22 },
+  yellow: { x: WORLD_WIDTH * 0.86, y: WORLD_HEIGHT * 0.78 },
+};
 const ORE_FIELDS: readonly Vec2[] = [
-  { x: WORLD_WIDTH * 0.19, y: WORLD_HEIGHT * 0.2 },
-  { x: WORLD_WIDTH * 0.78, y: WORLD_HEIGHT * 0.78 },
+  { x: WORLD_WIDTH * 0.18, y: WORLD_HEIGHT * 0.2 },
+  { x: WORLD_WIDTH * 0.82, y: WORLD_HEIGHT * 0.8 },
+  { x: WORLD_WIDTH * 0.18, y: WORLD_HEIGHT * 0.8 },
+  { x: WORLD_WIDTH * 0.82, y: WORLD_HEIGHT * 0.2 },
   { x: WORLD_WIDTH * 0.52, y: WORLD_HEIGHT * 0.48 },
-  { x: WORLD_WIDTH * 0.32, y: WORLD_HEIGHT * 0.76 },
-  { x: WORLD_WIDTH * 0.74, y: WORLD_HEIGHT * 0.27 },
+  { x: WORLD_WIDTH * 0.35, y: WORLD_HEIGHT * 0.62 },
+  { x: WORLD_WIDTH * 0.65, y: WORLD_HEIGHT * 0.38 },
 ];
 
 export function createGame(roomCode: string): GameState {
@@ -108,7 +116,7 @@ export function setPlayerReady(game: GameState, playerId: string, ready: boolean
   const player = findPlayer(game, playerId);
   if (!player) return { ok: false, error: "Player not found" };
   player.ready = ready;
-  if (game.players.length === 2 && game.players.every((candidate) => candidate.ready)) {
+  if (game.players.length >= 2 && game.players.every((candidate) => candidate.ready)) {
     game.phase = "playing";
   }
   return { ok: true, error: "" };
@@ -168,7 +176,8 @@ export function buildStructure(game: GameState, playerId: string, kind: Buildabl
 
   player.resources -= cost;
   const existing = game.entities.filter((entity) => entity.ownerId === playerId && entity.kind === kind).length;
-  const angle = (existing / 6) * Math.PI * 2 + (player.color === "red" ? -0.45 : Math.PI - 0.45);
+  const centerAngle = Math.atan2(WORLD_HEIGHT / 2 - anchor.y, WORLD_WIDTH / 2 - anchor.x);
+  const angle = centerAngle + (existing / 6) * Math.PI * 2 - 0.45;
   const distance = anchor.radius + definition.radius + 68 + existing * 8;
   addBuilding(game, playerId, kind, anchor.x + Math.cos(angle) * distance, anchor.y + Math.sin(angle) * distance);
 
@@ -247,9 +256,7 @@ export function runBotTurn(game: GameState, botPlayerId: string): void {
 
   if (game.tick < BOT_ATTACK_GRACE_TICKS) return;
 
-  const target =
-    game.entities.find((entity) => entity.ownerId !== botPlayerId && entity.kind === "hq") ??
-    game.entities.find((entity) => entity.ownerId !== botPlayerId);
+  const target = chooseBotTarget(game, botPlayerId);
   if (!target) return;
 
   const attackers = game.entities.filter(
@@ -285,16 +292,16 @@ export function snapshotGame(game: GameState): GameSnapshot {
 }
 
 function createStartingBase(game: GameState, player: PlayerState): void {
-  const isRed = player.color === "red";
-  const anchor = isRed ? { x: 310, y: WORLD_HEIGHT - 320 } : { x: WORLD_WIDTH - 310, y: 320 };
-  const direction = isRed ? 1 : -1;
+  const anchor = STARTING_BASES[player.color];
+  const forward = normalized({ x: WORLD_WIDTH / 2 - anchor.x, y: WORLD_HEIGHT / 2 - anchor.y });
+  const right = { x: -forward.y, y: forward.x };
 
   addBuilding(game, player.id, "hq", anchor.x, anchor.y);
-  addBuilding(game, player.id, "factory", anchor.x + direction * 170, anchor.y - direction * 35);
-  addBuilding(game, player.id, "refinery", anchor.x - direction * 45, anchor.y - direction * 145);
-  addUnit(game, player.id, "harvester", anchor.x - direction * 130, anchor.y - direction * 195);
-  addUnit(game, player.id, "rifle", anchor.x + direction * 98, anchor.y + direction * 94);
-  addUnit(game, player.id, "tank", anchor.x + direction * 172, anchor.y + direction * 118);
+  addBuilding(game, player.id, "factory", anchor.x + forward.x * 190 + right.x * 70, anchor.y + forward.y * 190 + right.y * 70);
+  addBuilding(game, player.id, "refinery", anchor.x + forward.x * 115 - right.x * 150, anchor.y + forward.y * 115 - right.y * 150);
+  addUnit(game, player.id, "harvester", anchor.x + forward.x * 190 - right.x * 210, anchor.y + forward.y * 190 - right.y * 210);
+  addUnit(game, player.id, "rifle", anchor.x + forward.x * 220 + right.x * 120, anchor.y + forward.y * 220 + right.y * 120);
+  addUnit(game, player.id, "tank", anchor.x + forward.x * 290 + right.x * 145, anchor.y + forward.y * 290 + right.y * 145);
 }
 
 function addBuilding(game: GameState, ownerId: string, kind: BuildingKind, x: number, y: number): EntityState {
@@ -480,6 +487,15 @@ function nearestEnemyInRange(game: GameState, entity: EntityState): EntityState 
   return bestTarget;
 }
 
+function chooseBotTarget(game: GameState, botPlayerId: string): EntityState | undefined {
+  const botEntities = game.entities.filter((entity) => entity.ownerId === botPlayerId && entity.hp > 0);
+  const origin = centroid(botEntities) ?? STARTING_BASES[findPlayer(game, botPlayerId)?.color ?? "red"];
+  const enemyHqs = game.entities.filter((entity) => entity.ownerId !== botPlayerId && entity.kind === "hq" && entity.hp > 0);
+  const enemies = game.entities.filter((entity) => entity.ownerId !== botPlayerId && entity.hp > 0);
+
+  return nearestEntity(origin, enemyHqs) ?? nearestEntity(origin, enemies);
+}
+
 function fireAt(game: GameState, attacker: EntityState, target: EntityState): void {
   const isArtillery = attacker.kind === "artillery";
   const impactRadius = isArtillery ? ARTILLERY_SPLASH_RADIUS : 0;
@@ -595,6 +611,33 @@ function nearestPoint(from: Vec2, points: readonly Vec2[]): Vec2 {
   }
 
   return closest;
+}
+
+function centroid(points: readonly Vec2[]): Vec2 | undefined {
+  if (points.length === 0) return undefined;
+
+  const total = points.reduce(
+    (sum, point) => ({
+      x: sum.x + point.x,
+      y: sum.y + point.y,
+    }),
+    { x: 0, y: 0 },
+  );
+
+  return {
+    x: total.x / points.length,
+    y: total.y / points.length,
+  };
+}
+
+function normalized(vector: Vec2): Vec2 {
+  const length = Math.hypot(vector.x, vector.y);
+  if (length === 0) return { x: 1, y: 0 };
+
+  return {
+    x: vector.x / length,
+    y: vector.y / length,
+  };
 }
 
 function chooseBotBuildOrder(game: GameState, botPlayerId: string): UnitKind[] {

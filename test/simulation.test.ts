@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { UNIT_DEFS, type ClientCommand } from "../src/shared/protocol";
+import { MAX_PLAYERS, UNIT_DEFS, WORLD_HEIGHT, WORLD_WIDTH, type ClientCommand } from "../src/shared/protocol";
 import {
   addBotPlayer,
   addPlayer,
@@ -8,22 +8,36 @@ import {
   issueCommand,
   queueUnit,
   runBotTurn,
+  setPlayerReady,
   snapshotGame,
   stepGame,
 } from "../src/server/simulation";
 
 describe("authoritative RTS simulation", () => {
-  test("adds two players with opposing HQs and starting forces", () => {
+  test("adds four FFA players with distinct colors and corner bases", () => {
     const game = createGame("TEST");
 
     const red = addPlayer(game, "p1", "Red");
     const blue = addPlayer(game, "p2", "Blue");
+    const green = addPlayer(game, "p3", "Green");
+    const yellow = addPlayer(game, "p4", "Yellow");
+    const full = addPlayer(game, "p5", "Overflow");
 
     expect(red.ok).toBe(true);
     expect(blue.ok).toBe(true);
-    expect(snapshotGame(game).players.map((player) => player.color)).toEqual(["red", "blue"]);
-    expect(game.entities.filter((entity) => entity.kind === "hq")).toHaveLength(2);
-    expect(game.entities.filter((entity) => entity.role === "unit")).toHaveLength(6);
+    expect(green.ok).toBe(true);
+    expect(yellow.ok).toBe(true);
+    expect(full.ok).toBe(false);
+    expect(MAX_PLAYERS).toBe(4);
+    expect(snapshotGame(game).players.map((player) => player.color)).toEqual(["red", "blue", "green", "yellow"]);
+    expect(game.entities.filter((entity) => entity.kind === "hq")).toHaveLength(4);
+    expect(game.entities.filter((entity) => entity.role === "unit")).toHaveLength(12);
+
+    const hqs = game.entities.filter((entity) => entity.kind === "hq");
+    expect(hqs.some((hq) => hq.x < WORLD_WIDTH / 2 && hq.y > WORLD_HEIGHT / 2)).toBe(true);
+    expect(hqs.some((hq) => hq.x > WORLD_WIDTH / 2 && hq.y < WORLD_HEIGHT / 2)).toBe(true);
+    expect(hqs.some((hq) => hq.x < WORLD_WIDTH / 2 && hq.y < WORLD_HEIGHT / 2)).toBe(true);
+    expect(hqs.some((hq) => hq.x > WORLD_WIDTH / 2 && hq.y > WORLD_HEIGHT / 2)).toBe(true);
   });
 
   test("spends resources and spawns queued units after build time", () => {
@@ -110,7 +124,7 @@ describe("authoritative RTS simulation", () => {
     stepGame(game, 20000);
 
     expect(result.ok).toBe(true);
-    expect(tank!.x).toBeLessThanOrEqual(2400 - tank!.radius);
+    expect(tank!.x).toBeLessThanOrEqual(WORLD_WIDTH - tank!.radius);
     expect(tank!.y).toBeGreaterThanOrEqual(tank!.radius);
   });
 
@@ -156,34 +170,65 @@ describe("authoritative RTS simulation", () => {
     expect(game.winnerId).toBe("p1");
   });
 
-  test("adds a ready bot that builds first and attacks after a short grace period", () => {
+  test("adds three ready bots and starts a four-player FFA when the human is ready", () => {
     const game = createGame("TEST");
     addPlayer(game, "p1", "Human");
-    const bot = addBotPlayer(game, "bot-TEST");
-    setHumanReady(game, "p1");
+    const bot1 = addBotPlayer(game, "bot-TEST-1");
+    const bot2 = addBotPlayer(game, "bot-TEST-2");
+    const bot3 = addBotPlayer(game, "bot-TEST-3");
 
-    expect(bot.ok).toBe(true);
-    expect(bot.player?.isBot).toBe(true);
-    expect(bot.player?.ready).toBe(true);
+    expect(bot1.ok).toBe(true);
+    expect(bot2.ok).toBe(true);
+    expect(bot3.ok).toBe(true);
+    expect(game.players.filter((player) => player.isBot)).toHaveLength(3);
+    expect(game.phase).toBe("lobby");
+    setPlayerReady(game, "p1", true);
     expect(game.phase).toBe("playing");
 
-    runBotTurn(game, "bot-TEST");
+    runBotTurn(game, "bot-TEST-1");
 
-    expect(game.production.some((item) => item.playerId === "bot-TEST")).toBe(true);
+    expect(game.production.some((item) => item.playerId === "bot-TEST-1")).toBe(true);
     expect(
       game.entities
-        .filter((entity) => entity.ownerId === "bot-TEST" && entity.role === "unit")
+        .filter((entity) => entity.ownerId === "bot-TEST-1" && entity.role === "unit")
         .some((entity) => entity.order.type === "attack"),
     ).toBe(false);
 
     game.tick = 220;
-    runBotTurn(game, "bot-TEST");
+    runBotTurn(game, "bot-TEST-1");
 
     expect(
       game.entities
-        .filter((entity) => entity.ownerId === "bot-TEST" && entity.role === "unit")
+        .filter((entity) => entity.ownerId === "bot-TEST-1" && entity.role === "unit")
         .some((entity) => entity.order.type === "attack"),
     ).toBe(true);
+  });
+
+  test("four-player FFA continues until only one HQ remains", () => {
+    const game = createGame("TEST");
+    addPlayer(game, "p1", "Red");
+    addPlayer(game, "p2", "Blue");
+    addPlayer(game, "p3", "Green");
+    addPlayer(game, "p4", "Yellow");
+    for (const player of game.players) {
+      setPlayerReady(game, player.id, true);
+    }
+
+    for (const hq of game.entities.filter((entity) => entity.kind === "hq" && entity.ownerId !== "p1").slice(0, 2)) {
+      hq.hp = 0;
+    }
+    stepGame(game, 100);
+
+    expect(game.phase).toBe("playing");
+    expect(game.winnerId).toBeUndefined();
+
+    const lastEnemyHq = game.entities.find((entity) => entity.kind === "hq" && entity.ownerId === "p4");
+    expect(lastEnemyHq).toBeDefined();
+    lastEnemyHq!.hp = 0;
+    stepGame(game, 100);
+
+    expect(game.phase).toBe("gameover");
+    expect(game.winnerId).toBe("p1");
   });
 
   test("idle units automatically attack enemies in range", () => {
@@ -253,12 +298,3 @@ describe("authoritative RTS simulation", () => {
     expect(nearby.hp).toBeLessThan(nearbyStartingHp);
   });
 });
-
-function setHumanReady(game: ReturnType<typeof createGame>, playerId: string): void {
-  const player = game.players.find((candidate) => candidate.id === playerId);
-  if (!player) throw new Error("Missing player");
-  player.ready = true;
-  if (game.players.length === 2 && game.players.every((candidate) => candidate.ready)) {
-    game.phase = "playing";
-  }
-}

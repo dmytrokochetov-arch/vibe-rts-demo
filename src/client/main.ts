@@ -1,6 +1,7 @@
 import { io, type Socket } from "socket.io-client";
 import {
   BUILDING_DEFS,
+  MAX_PLAYERS,
   UNIT_DEFS,
   type BuildableStructureKind,
   type ClientCommand,
@@ -47,8 +48,8 @@ app.innerHTML = `
 
     <section class="lobby-panel" data-lobby>
       <div class="lobby-card">
-        <h1>Two Player RTS Demo</h1>
-        <p>Create a room, share the code, then both players press ready.</p>
+        <h1>Four Player RTS Demo</h1>
+        <p>Create a room, add up to three bots or share the code for a four-player FFA.</p>
         <label>
           Commander
           <input data-name maxlength="18" value="Commander" />
@@ -178,7 +179,6 @@ function wireLobby(): void {
         showError(result.error ?? "Could not add bot");
         return;
       }
-      elements.bot.disabled = true;
       addLog("Bot joined");
       showError("");
     });
@@ -231,6 +231,13 @@ function wireCanvas(): void {
         return;
       }
       state.lastRightClickAt = now;
+      const entity = state.renderer.ownedUnitAt(point.x, point.y, state.playerId);
+      if (entity) {
+        state.selectedIds.clear();
+        state.selectedIds.add(entity.id);
+        state.renderer.setSelection(state.selectedIds);
+        updateHudIfPossible();
+      }
       canvasElement.setPointerCapture(event.pointerId);
       state.dragStart = point;
       state.dragButton = event.button;
@@ -317,8 +324,8 @@ function updateHud(snapshot: GameSnapshot): void {
         ? "In Battle"
         : hasBot
           ? "Bot Ready"
-          : `${snapshot.players.length}/2 Commanders`;
-  elements.bot.disabled = !state.playerId || snapshot.phase !== "lobby" || snapshot.players.length >= 2;
+          : `${snapshot.players.length}/${MAX_PLAYERS} Commanders`;
+  elements.bot.disabled = !state.playerId || snapshot.phase !== "lobby" || snapshot.players.length >= MAX_PLAYERS;
 
   const selected = selectedEntities();
   elements.selection.textContent =

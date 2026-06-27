@@ -1,9 +1,9 @@
-export const WORLD_WIDTH = 2400;
-export const WORLD_HEIGHT = 1600;
+export const WORLD_WIDTH = 3000;
+export const WORLD_HEIGHT = 2000;
 export const TICK_MS = 100;
-export const MAX_PLAYERS = 2;
+export const MAX_PLAYERS = 4;
 
-export type PlayerColor = "red" | "blue";
+export type PlayerColor = "red" | "blue" | "green" | "yellow";
 export type RoomPhase = "lobby" | "playing" | "gameover";
 export type UnitKind = "harvester" | "rifle" | "tank" | "artillery";
 export type BuildableStructureKind = "turret";
