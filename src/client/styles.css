@@ -136,6 +136,87 @@ button {
   display: none;
 }
 
+.victory-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(5, 8, 10, 0.36);
+  pointer-events: auto;
+}
+
+.victory-overlay.hidden {
+  display: none;
+}
+
+.victory-card {
+  display: grid;
+  justify-items: center;
+  width: min(360px, calc(100vw - 28px));
+  padding: 22px;
+  color: #f8fafc;
+  background: rgba(13, 18, 20, 0.92);
+  border: 1px solid rgba(134, 239, 172, 0.34);
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(14px);
+}
+
+.victory-overlay.defeat .victory-card {
+  border-color: rgba(248, 113, 113, 0.34);
+}
+
+.victory-icon {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  margin-bottom: 8px;
+  color: #10231a;
+  background: #86efac;
+  border: 4px solid rgba(240, 253, 244, 0.86);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 8px rgba(134, 239, 172, 0.14),
+    0 14px 32px rgba(0, 0, 0, 0.36);
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.victory-overlay.defeat .victory-icon {
+  color: #2b1111;
+  background: #f87171;
+  box-shadow:
+    0 0 0 8px rgba(248, 113, 113, 0.14),
+    0 14px 32px rgba(0, 0, 0, 0.36);
+}
+
+.victory-card h2 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.05;
+}
+
+.victory-card p {
+  margin: 8px 0 16px;
+  color: #b9c8c1;
+  text-align: center;
+}
+
+.victory-card button {
+  min-height: 38px;
+  padding: 8px 14px;
+  color: #f8fafc;
+  background: #2e6f73;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 7px;
+  cursor: pointer;
+  font-weight: 760;
+}
+
 .lobby-panel.compact {
   align-items: start;
   justify-items: end;
@@ -298,7 +379,7 @@ button {
 .production button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  flex: 0 0 70px;
+  flex: 0 0 66px;
   min-height: 40px;
   min-width: 0;
   gap: 4px;

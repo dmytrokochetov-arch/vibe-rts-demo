@@ -3,6 +3,7 @@ import { UNIT_DEFS, type ClientCommand } from "../src/shared/protocol";
 import {
   addBotPlayer,
   addPlayer,
+  buildStructure,
   createGame,
   issueCommand,
   queueUnit,
@@ -65,6 +66,25 @@ describe("authoritative RTS simulation", () => {
     expect(game.players[0].resources).toBeGreaterThan(0);
   });
 
+  test("harvesters ignore player commands and keep harvesting", () => {
+    const game = createGame("TEST");
+    addPlayer(game, "p1", "Red");
+    const harvester = game.entities.find((entity) => entity.ownerId === "p1" && entity.kind === "harvester");
+    expect(harvester).toBeDefined();
+
+    const result = issueCommand(game, "p1", {
+      type: "move",
+      entityIds: [harvester!.id],
+      x: 1200,
+      y: 900,
+    });
+
+    expect(result.ok).toBe(false);
+    stepGame(game, 500);
+    expect(harvester!.harvestMode).toBeDefined();
+    expect(harvester!.order.type).toBe("idle");
+  });
+
   test("moves owned units toward commanded locations", () => {
     const game = createGame("TEST");
     addPlayer(game, "p1", "Red");
@@ -78,6 +98,20 @@ describe("authoritative RTS simulation", () => {
 
     expect(result.ok).toBe(true);
     expect(tank!.x).toBeGreaterThan(startX + 40);
+  });
+
+  test("move commands stay inside the playable map", () => {
+    const game = createGame("TEST");
+    addPlayer(game, "p1", "Red");
+    const tank = game.entities.find((entity) => entity.ownerId === "p1" && entity.kind === "tank");
+    expect(tank).toBeDefined();
+
+    const result = issueCommand(game, "p1", { type: "move", entityIds: [tank!.id], x: 99999, y: -99999 });
+    stepGame(game, 20000);
+
+    expect(result.ok).toBe(true);
+    expect(tank!.x).toBeLessThanOrEqual(2400 - tank!.radius);
+    expect(tank!.y).toBeGreaterThanOrEqual(tank!.radius);
   });
 
   test("rejects commands for enemy units", () => {
@@ -167,6 +201,56 @@ describe("authoritative RTS simulation", () => {
     stepGame(game, redTank!.cooldownMs);
 
     expect(blueRifle!.hp).toBeLessThan(startingHp);
+  });
+
+  test("builds turrets that automatically attack enemies in range", () => {
+    const game = createGame("TEST");
+    addPlayer(game, "p1", "Red");
+    addPlayer(game, "p2", "Blue");
+    const player = game.players[0];
+    player.resources = 1000;
+    const result = buildStructure(game, "p1", "turret");
+    const turret = game.entities.find((entity) => entity.ownerId === "p1" && entity.kind === "turret");
+    const enemy = game.entities.find((entity) => entity.ownerId === "p2" && entity.kind === "rifle");
+    expect(result.ok).toBe(true);
+    expect(turret).toBeDefined();
+    expect(enemy).toBeDefined();
+    enemy!.x = turret!.x + turret!.range - 20;
+    enemy!.y = turret!.y;
+    const startingHp = enemy!.hp;
+
+    stepGame(game, turret!.cooldownMs);
+
+    expect(enemy!.hp).toBeLessThan(startingHp);
+  });
+
+  test("artillery damages enemies around the target impact", () => {
+    const game = createGame("TEST");
+    addPlayer(game, "p1", "Red");
+    addPlayer(game, "p2", "Blue");
+    game.players[0].resources = 1000;
+    queueUnit(game, "p1", "artillery");
+    stepGame(game, UNIT_DEFS.artillery.buildTimeMs);
+    const artillery = game.entities.find((entity) => entity.ownerId === "p1" && entity.kind === "artillery");
+    const target = game.entities.find((entity) => entity.ownerId === "p2" && entity.kind === "tank");
+    const nearby = game.entities.find((entity) => entity.ownerId === "p2" && entity.kind === "rifle");
+    expect(artillery).toBeDefined();
+    expect(target).toBeDefined();
+    expect(nearby).toBeDefined();
+    if (!artillery) return;
+    if (!target) return;
+    if (!nearby) return;
+    artillery.x = target.x - 140;
+    artillery.y = target.y;
+    nearby.x = target.x + 36;
+    nearby.y = target.y;
+    const nearbyStartingHp = nearby.hp;
+
+    const result = issueCommand(game, "p1", { type: "attack", entityIds: [artillery.id], targetId: target.id });
+    stepGame(game, artillery.cooldownMs);
+
+    expect(result.ok).toBe(true);
+    expect(nearby.hp).toBeLessThan(nearbyStartingHp);
   });
 });
 

@@ -4,6 +4,7 @@ import {
   TICK_MS,
   type ClientCommand,
   type ClientToServerEvents,
+  type BuildableStructureKind,
   type JoinResult,
   type ServerToClientEvents,
   type UnitKind,
@@ -11,6 +12,7 @@ import {
 import {
   addBotPlayer,
   addPlayer,
+  buildStructure,
   createGame,
   issueCommand,
   queueUnit,
@@ -103,6 +105,16 @@ export function registerRoomHandlers(io: GameServer): void {
       const runtime = rooms.get(context.roomCode);
       if (!runtime) return;
       const result = queueUnit(runtime.game, context.playerId, kind);
+      if (!result.ok) socket.emit("playerError", result.error);
+      emitRoomState(io, runtime, context.roomCode);
+    });
+
+    socket.on("buildStructure", (kind: BuildableStructureKind) => {
+      const context = socketPlayers.get(socket.id);
+      if (!context) return;
+      const runtime = rooms.get(context.roomCode);
+      if (!runtime) return;
+      const result = buildStructure(runtime.game, context.playerId, kind);
       if (!result.ok) socket.emit("playerError", result.error);
       emitRoomState(io, runtime, context.roomCode);
     });

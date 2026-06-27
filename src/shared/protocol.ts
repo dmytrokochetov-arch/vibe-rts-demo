@@ -6,7 +6,8 @@ export const MAX_PLAYERS = 2;
 export type PlayerColor = "red" | "blue";
 export type RoomPhase = "lobby" | "playing" | "gameover";
 export type UnitKind = "harvester" | "rifle" | "tank" | "artillery";
-export type BuildingKind = "hq" | "factory" | "refinery";
+export type BuildableStructureKind = "turret";
+export type BuildingKind = "hq" | "factory" | "refinery" | BuildableStructureKind;
 export type EntityKind = UnitKind | BuildingKind;
 export type EntityRole = "unit" | "building";
 export type Order =
@@ -72,6 +73,7 @@ export interface ExplosionEvent {
   x: number;
   y: number;
   ageMs: number;
+  radius?: number;
 }
 
 export interface GameSnapshot {
@@ -112,6 +114,7 @@ export interface ClientToServerEvents {
   addBot: (callback: (result: JoinResult) => void) => void;
   ready: () => void;
   queueUnit: (kind: UnitKind) => void;
+  buildStructure: (kind: BuildableStructureKind) => void;
   command: (command: ClientCommand) => void;
   restart: () => void;
 }
@@ -132,6 +135,10 @@ export interface BuildingDefinition {
   label: string;
   hp: number;
   radius: number;
+  cost?: number;
+  range?: number;
+  damage?: number;
+  cooldownMs?: number;
 }
 
 export const UNIT_DEFS: Record<UnitKind, UnitDefinition> = {
@@ -185,4 +192,13 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDefinition> = {
   hq: { label: "HQ", hp: 900, radius: 52 },
   factory: { label: "Factory", hp: 520, radius: 44 },
   refinery: { label: "Refinery", hp: 430, radius: 38 },
+  turret: {
+    label: "Turret",
+    hp: 320,
+    radius: 28,
+    cost: 220,
+    range: 235,
+    damage: 24,
+    cooldownMs: 750,
+  },
 };

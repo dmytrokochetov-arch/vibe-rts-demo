@@ -1,6 +1,8 @@
 import { io, type Socket } from "socket.io-client";
 import {
+  BUILDING_DEFS,
   UNIT_DEFS,
+  type BuildableStructureKind,
   type ClientCommand,
   type ClientToServerEvents,
   type EntityState,
@@ -23,6 +25,7 @@ interface ClientState {
   dragStart?: { x: number; y: number };
   dragButton?: number;
   dragRect?: DragRect;
+  lastRightClickAt: number;
   renderer: Renderer;
 }
 
@@ -63,6 +66,15 @@ app.innerHTML = `
       </div>
     </section>
 
+    <section class="victory-overlay hidden" data-victory>
+      <div class="victory-card">
+        <div class="victory-icon" data-victory-icon>V</div>
+        <h2 data-victory-title>Victory</h2>
+        <p data-victory-copy>Enemy HQ destroyed.</p>
+        <button data-new-match>New Match</button>
+      </div>
+    </section>
+
     <section class="command-panel">
       <div class="minimap" data-minimap></div>
       <div class="production">
@@ -70,6 +82,7 @@ app.innerHTML = `
         <button data-unit="rifle"><span>Rifle</span><strong>${UNIT_DEFS.rifle.cost}</strong></button>
         <button data-unit="tank"><span>Tank</span><strong>${UNIT_DEFS.tank.cost}</strong></button>
         <button data-unit="artillery"><span>Arty</span><strong>${UNIT_DEFS.artillery.cost}</strong></button>
+        <button data-structure="turret"><span>Tur</span><strong>${BUILDING_DEFS.turret.cost}</strong></button>
       </div>
       <div class="selection" data-selection>No units selected</div>
       <div class="event-log" data-log></div>
@@ -85,6 +98,7 @@ const state: ClientState = {
   socket: io(),
   isReady: false,
   selectedIds: new Set(),
+  lastRightClickAt: 0,
   renderer: new Renderer(canvasElement),
 };
 
@@ -104,6 +118,12 @@ const elements = {
   selection: required("[data-selection]"),
   log: required("[data-log]"),
   productionButtons: [...app.querySelectorAll<HTMLButtonElement>("[data-unit]")],
+  structureButtons: [...app.querySelectorAll<HTMLButtonElement>("[data-structure]")],
+  victory: required("[data-victory]"),
+  victoryIcon: required("[data-victory-icon]"),
+  victoryTitle: required("[data-victory-title]"),
+  victoryCopy: required("[data-victory-copy]"),
+  newMatch: required<HTMLButtonElement>("[data-new-match]"),
 };
 
 wireSocket();
@@ -176,6 +196,16 @@ function wireLobby(): void {
       state.socket.emit("queueUnit", button.dataset.unit as UnitKind);
     });
   }
+
+  for (const button of elements.structureButtons) {
+    button.addEventListener("click", () => {
+      state.socket.emit("buildStructure", button.dataset.structure as BuildableStructureKind);
+    });
+  }
+
+  elements.newMatch.addEventListener("click", () => {
+    window.location.reload();
+  });
 }
 
 function wireCanvas(): void {
@@ -193,6 +223,14 @@ function wireCanvas(): void {
     }
     if (event.button === 2) {
       event.preventDefault();
+      const now = window.performance.now();
+      if (now - state.lastRightClickAt <= 900) {
+        state.lastRightClickAt = 0;
+        clearSelection();
+        resetDragSelection();
+        return;
+      }
+      state.lastRightClickAt = now;
       const entity = state.renderer.ownedUnitAt(point.x, point.y, state.playerId);
       if (entity && entity.ownerId === state.playerId && entity.role === "unit") {
         canvasElement.setPointerCapture(event.pointerId);
@@ -255,11 +293,20 @@ function setSnapshot(snapshot: GameSnapshot): void {
   state.snapshot = snapshot;
   state.roomCode = snapshot.roomCode;
   state.renderer.setSnapshot(snapshot, state.playerId);
-  state.selectedIds = new Set([...state.selectedIds].filter((id) => snapshot.entities.some((entity) => entity.id === id)));
+  state.selectedIds = new Set(
+    [...state.selectedIds].filter((id) =>
+      snapshot.entities.some((entity) => entity.id === id && entity.kind !== "harvester"),
+    ),
+  );
   state.renderer.setSelection(state.selectedIds);
   updateHud(snapshot);
   if (snapshot.phase === "playing") elements.lobby.classList.add("hidden");
-  if (snapshot.phase === "gameover") elements.lobby.classList.remove("hidden");
+  if (snapshot.phase === "gameover") {
+    elements.lobby.classList.add("hidden");
+    updateVictoryOverlay(snapshot);
+  } else {
+    elements.victory.classList.add("hidden");
+  }
   if (snapshot.phase === "lobby" && state.playerId) {
     elements.lobby.classList.add("compact");
     elements.ready.disabled = state.isReady;
@@ -298,6 +345,10 @@ function updateHud(snapshot: GameSnapshot): void {
     const kind = button.dataset.unit as UnitKind;
     button.disabled = !affordable.has(kind) || snapshot.phase !== "playing";
   }
+  for (const button of elements.structureButtons) {
+    const kind = button.dataset.structure as BuildableStructureKind;
+    button.disabled = (player?.resources ?? 0) < (BUILDING_DEFS[kind].cost ?? 0) || snapshot.phase !== "playing";
+  }
 }
 
 function issueContextCommand(point: { x: number; y: number }): void {
@@ -320,7 +371,7 @@ function issueContextCommand(point: { x: number; y: number }): void {
 function selectSingle(point: { x: number; y: number }): void {
   const entity = state.renderer.ownedUnitAt(point.x, point.y, state.playerId);
   state.selectedIds.clear();
-  if (entity) {
+  if (entity && entity.kind !== "harvester") {
     state.selectedIds.add(entity.id);
   }
   state.renderer.setSelection(state.selectedIds);
@@ -330,10 +381,16 @@ function selectMany(rect: DragRect): void {
   state.selectedIds = new Set(
     state.renderer
       .entitiesInRect(rect)
-      .filter((entity) => entity.ownerId === state.playerId && entity.role === "unit")
+      .filter((entity) => entity.ownerId === state.playerId && entity.role === "unit" && entity.kind !== "harvester")
       .map((entity) => entity.id),
   );
   state.renderer.setSelection(state.selectedIds);
+}
+
+function clearSelection(): void {
+  state.selectedIds.clear();
+  state.renderer.setSelection(state.selectedIds);
+  updateHudIfPossible();
 }
 
 function selectedEntities(): EntityState[] {
@@ -352,6 +409,20 @@ function playerName(): string {
 
 function showError(message: string): void {
   elements.error.textContent = message;
+}
+
+function updateHudIfPossible(): void {
+  if (state.snapshot) updateHud(state.snapshot);
+}
+
+function updateVictoryOverlay(snapshot: GameSnapshot): void {
+  const winner = snapshot.players.find((player) => player.id === snapshot.winnerId);
+  const didWin = snapshot.winnerId === state.playerId;
+  elements.victory.classList.toggle("defeat", !didWin);
+  elements.victoryIcon.textContent = didWin ? "V" : "X";
+  elements.victoryTitle.textContent = didWin ? "Victory" : "Defeat";
+  elements.victoryCopy.textContent = `${winner?.name ?? "A commander"} destroyed the enemy HQ.`;
+  elements.victory.classList.remove("hidden");
 }
 
 function addLog(message: string): void {

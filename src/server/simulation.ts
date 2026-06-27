@@ -4,8 +4,10 @@ import {
   WORLD_HEIGHT,
   WORLD_WIDTH,
   type BuildingKind,
+  type BuildableStructureKind,
   type ClientCommand,
   type EntityState,
+  type ExplosionEvent,
   type GameSnapshot,
   type PlayerColor,
   type PlayerState,
@@ -30,7 +32,7 @@ export interface GameState {
   entities: EntityState[];
   production: ProductionItem[];
   projectiles: ProjectileEvent[];
-  explosions: { id: string; x: number; y: number; ageMs: number }[];
+  explosions: ExplosionEvent[];
   winnerId?: string;
   nextId: number;
 }
@@ -42,6 +44,8 @@ const HARVEST_RATE_PER_SECOND = 44;
 const HARVEST_RADIUS = 38;
 const DELIVERY_RADIUS = 58;
 const BOT_ATTACK_GRACE_TICKS = 220;
+const ARTILLERY_SPLASH_RADIUS = 78;
+const ARTILLERY_SPLASH_DAMAGE_RATIO = 0.55;
 const PLAYER_COLORS: PlayerColor[] = ["red", "blue"];
 const ORE_FIELDS: readonly Vec2[] = [
   { x: WORLD_WIDTH * 0.19, y: WORLD_HEIGHT * 0.2 },
@@ -145,6 +149,32 @@ export function queueUnit(game: GameState, playerId: string, kind: UnitKind): Re
   return { ok: true, error: "" };
 }
 
+export function buildStructure(game: GameState, playerId: string, kind: BuildableStructureKind): Result {
+  const player = findPlayer(game, playerId);
+  if (!player) return { ok: false, error: "Player not found" };
+
+  const definition = BUILDING_DEFS[kind];
+  const cost = definition.cost ?? 0;
+  if (player.resources < cost) {
+    return { ok: false, error: "Not enough ore" };
+  }
+
+  const anchor =
+    game.entities.find((entity) => entity.ownerId === playerId && entity.kind === "factory" && entity.hp > 0) ??
+    game.entities.find((entity) => entity.ownerId === playerId && entity.kind === "hq" && entity.hp > 0);
+  if (!anchor) {
+    return { ok: false, error: "Base required" };
+  }
+
+  player.resources -= cost;
+  const existing = game.entities.filter((entity) => entity.ownerId === playerId && entity.kind === kind).length;
+  const angle = (existing / 6) * Math.PI * 2 + (player.color === "red" ? -0.45 : Math.PI - 0.45);
+  const distance = anchor.radius + definition.radius + 68 + existing * 8;
+  addBuilding(game, playerId, kind, anchor.x + Math.cos(angle) * distance, anchor.y + Math.sin(angle) * distance);
+
+  return { ok: true, error: "" };
+}
+
 export function issueCommand(game: GameState, playerId: string, command: ClientCommand): Result {
   const selected = command.entityIds
     .map((id) => game.entities.find((entity) => entity.id === id))
@@ -158,6 +188,11 @@ export function issueCommand(game: GameState, playerId: string, command: ClientC
     return { ok: false, error: "Can only command own units" };
   }
 
+  const controllable = selected.filter((entity) => entity.kind !== "harvester");
+  if (controllable.length === 0) {
+    return { ok: false, error: "Harvesters gather automatically" };
+  }
+
   if (command.type === "attack") {
     const target = game.entities.find((entity) => entity.id === command.targetId);
     if (!target) {
@@ -166,7 +201,7 @@ export function issueCommand(game: GameState, playerId: string, command: ClientC
     if (target.ownerId === playerId) {
       return { ok: false, error: "Cannot attack friendly targets" };
     }
-    for (const entity of selected) {
+    for (const entity of controllable) {
       entity.order = { type: "attack", targetId: target.id };
     }
     return { ok: true, error: "" };
@@ -174,9 +209,13 @@ export function issueCommand(game: GameState, playerId: string, command: ClientC
 
   const x = clamp(command.x, 0, WORLD_WIDTH);
   const y = clamp(command.y, 0, WORLD_HEIGHT);
-  for (const [index, entity] of selected.entries()) {
-    const offset = spreadOffset(index, selected.length);
-    entity.order = { type: "move", x: x + offset.x, y: y + offset.y };
+  for (const [index, entity] of controllable.entries()) {
+    const offset = spreadOffset(index, controllable.length);
+    entity.order = {
+      type: "move",
+      x: clamp(x + offset.x, entity.radius, WORLD_WIDTH - entity.radius),
+      y: clamp(y + offset.y, entity.radius, WORLD_HEIGHT - entity.radius),
+    };
   }
   return { ok: true, error: "" };
 }
@@ -260,20 +299,21 @@ function createStartingBase(game: GameState, player: PlayerState): void {
 
 function addBuilding(game: GameState, ownerId: string, kind: BuildingKind, x: number, y: number): EntityState {
   const definition = BUILDING_DEFS[kind];
+  const radius = definition.radius;
   const entity: EntityState = {
     id: createId(game, kind),
     ownerId,
     kind,
     role: "building",
-    x,
-    y,
-    radius: definition.radius,
+    x: clamp(x, radius, WORLD_WIDTH - radius),
+    y: clamp(y, radius, WORLD_HEIGHT - radius),
+    radius,
     hp: definition.hp,
     maxHp: definition.hp,
     speed: 0,
-    range: kind === "hq" ? 160 : 0,
-    damage: kind === "hq" ? 12 : 0,
-    cooldownMs: 1000,
+    range: definition.range ?? (kind === "hq" ? 160 : 0),
+    damage: definition.damage ?? (kind === "hq" ? 12 : 0),
+    cooldownMs: definition.cooldownMs ?? 1000,
     cooldownRemainingMs: 0,
     buildTimeMs: 0,
     order: { type: "idle" },
@@ -284,14 +324,15 @@ function addBuilding(game: GameState, ownerId: string, kind: BuildingKind, x: nu
 
 function addUnit(game: GameState, ownerId: string, kind: UnitKind, x: number, y: number): EntityState {
   const definition = UNIT_DEFS[kind];
+  const radius = definition.radius;
   const entity: EntityState = {
     id: createId(game, kind),
     ownerId,
     kind,
     role: "unit",
-    x,
-    y,
-    radius: definition.radius,
+    x: clamp(x, radius, WORLD_WIDTH - radius),
+    y: clamp(y, radius, WORLD_HEIGHT - radius),
+    radius,
     hp: definition.hp,
     maxHp: definition.hp,
     speed: definition.speed,
@@ -334,7 +375,12 @@ function processProduction(game: GameState, deltaMs: number): void {
 function processOrders(game: GameState, deltaMs: number): void {
   for (const entity of game.entities) {
     entity.cooldownRemainingMs = Math.max(0, entity.cooldownRemainingMs - deltaMs);
+    if (entity.role === "building") {
+      tryAutoAttack(game, entity);
+      continue;
+    }
     if (entity.role !== "unit") continue;
+    if (entity.kind === "harvester") continue;
 
     if (entity.order.type === "move") {
       moveToward(entity, entity.order, deltaMs);
@@ -366,8 +412,8 @@ function processOrders(game: GameState, deltaMs: number): void {
 function processHarvesters(game: GameState, deltaMs: number): void {
   for (const harvester of game.entities) {
     if (harvester.kind !== "harvester" || harvester.role !== "unit" || harvester.hp <= 0) continue;
-    if (harvester.order.type === "attack") continue;
 
+    harvester.order = { type: "idle" };
     harvester.cargo ??= 0;
     harvester.cargoCapacity ??= HARVESTER_CAPACITY;
     harvester.harvestMode ??= "toOre";
@@ -435,7 +481,18 @@ function nearestEnemyInRange(game: GameState, entity: EntityState): EntityState 
 }
 
 function fireAt(game: GameState, attacker: EntityState, target: EntityState): void {
-  target.hp -= attacker.damage;
+  const isArtillery = attacker.kind === "artillery";
+  const impactRadius = isArtillery ? ARTILLERY_SPLASH_RADIUS : 0;
+
+  applyDamage(game, target, attacker.damage);
+  if (isArtillery) {
+    for (const candidate of game.entities) {
+      if (candidate.id === target.id || candidate.ownerId === attacker.ownerId || candidate.hp <= 0) continue;
+      if (distanceBetween(candidate, target) > ARTILLERY_SPLASH_RADIUS) continue;
+      applyDamage(game, candidate, attacker.damage * ARTILLERY_SPLASH_DAMAGE_RATIO);
+    }
+  }
+
   attacker.cooldownRemainingMs = attacker.cooldownMs;
   game.projectiles.push({
     id: createId(game, "shot"),
@@ -444,8 +501,21 @@ function fireAt(game: GameState, attacker: EntityState, target: EntityState): vo
     ownerId: attacker.ownerId,
     ageMs: 0,
   });
+  if (isArtillery) {
+    game.explosions.push({
+      id: createId(game, "boom"),
+      x: target.x,
+      y: target.y,
+      ageMs: 0,
+      radius: impactRadius,
+    });
+  }
+}
+
+function applyDamage(game: GameState, target: EntityState, damage: number): void {
+  target.hp -= damage;
   if (target.hp <= 0) {
-    game.explosions.push({ id: createId(game, "boom"), x: target.x, y: target.y, ageMs: 0 });
+    game.explosions.push({ id: createId(game, "boom"), x: target.x, y: target.y, ageMs: 0, radius: target.radius + 32 });
   }
 }
 

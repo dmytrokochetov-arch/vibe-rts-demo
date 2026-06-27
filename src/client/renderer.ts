@@ -209,7 +209,7 @@ export class Renderer {
     return this.pickEntity(
       clientX,
       clientY,
-      (entity) => entity.ownerId === ownerId && entity.role === "unit",
+      (entity) => entity.ownerId === ownerId && entity.role === "unit" && entity.kind !== "harvester",
       true,
     );
   }
@@ -448,7 +448,7 @@ export class Renderer {
 
       ctx.fillStyle = "rgba(13, 16, 18, 0.42)";
       ctx.fillRect(-size * 0.22, size * 0.02, size * 0.44, size * 0.24);
-    } else {
+    } else if (entity.kind === "refinery") {
       ctx.fillStyle = palette.fill;
       roundedRectPath(ctx, -size * 0.36, -size * 0.34, size * 0.72, size * 0.68, 6);
       ctx.fill();
@@ -459,6 +459,27 @@ export class Renderer {
       ctx.fill();
       ctx.fillStyle = "rgba(13, 16, 18, 0.38)";
       ctx.fillRect(-size * 0.36, size * 0.24, size * 0.72, size * 0.09);
+    } else {
+      ctx.fillStyle = palette.fill;
+      ctx.beginPath();
+      ctx.arc(0, 0, size * 0.34, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = palette.dark;
+      roundedRectPath(ctx, -size * 0.22, -size * 0.2, size * 0.44, size * 0.4, 5);
+      ctx.fill();
+      ctx.strokeStyle = palette.light;
+      ctx.lineCap = "round";
+      ctx.lineWidth = 7 / this.camera.zoom;
+      ctx.beginPath();
+      ctx.moveTo(size * 0.06, -size * 0.04);
+      ctx.lineTo(size * 0.62, -size * 0.34);
+      ctx.stroke();
+      ctx.strokeStyle = palette.accent;
+      ctx.lineWidth = 2.5 / this.camera.zoom;
+      ctx.beginPath();
+      ctx.moveTo(size * 0.12, -size * 0.06);
+      ctx.lineTo(size * 0.62, -size * 0.34);
+      ctx.stroke();
     }
 
     ctx.strokeStyle = palette.light;
@@ -610,6 +631,10 @@ export class Renderer {
       const palette = paletteForEntity(entity, playerById);
       const isSelected = this.selection.has(entity.id);
 
+      if (entity.kind === "turret") {
+        this.drawRange(entity, palette);
+      }
+
       if (isSelected) {
         this.drawRange(entity, palette);
       }
@@ -634,7 +659,8 @@ export class Renderer {
 
     for (const explosion of snapshot.explosions) {
       const progress = clamp(explosion.ageMs / 650, 0, 1);
-      const radius = 10 + progress * 52;
+      const maxRadius = explosion.radius ?? 52;
+      const radius = 10 + progress * maxRadius;
       const alpha = 1 - progress;
 
       ctx.save();
@@ -643,11 +669,17 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(explosion.x, explosion.y, radius * 0.24, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = "#ff7a4f";
-      ctx.lineWidth = 4 / this.camera.zoom;
+      ctx.strokeStyle = explosion.radius && explosion.radius > 60 ? "rgba(255, 204, 102, 0.92)" : "#ff7a4f";
+      ctx.lineWidth = (explosion.radius && explosion.radius > 60 ? 3 : 4) / this.camera.zoom;
       ctx.beginPath();
       ctx.arc(explosion.x, explosion.y, radius, 0, Math.PI * 2);
       ctx.stroke();
+      if (explosion.radius && explosion.radius > 60) {
+        ctx.fillStyle = "rgba(255, 184, 77, 0.12)";
+        ctx.beginPath();
+        ctx.arc(explosion.x, explosion.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
     }
   }
@@ -1346,11 +1378,16 @@ export class Renderer {
 
   private updateCamera(): void {
     const size = this.canvasSize();
-    const zoom = Math.min(size.width / WORLD_WIDTH, size.height / WORLD_HEIGHT);
+    const topInset = Math.min(82, size.height * 0.14);
+    const bottomInset = Math.min(104, size.height * 0.18);
+    const sideInset = Math.min(16, size.width * 0.03);
+    const availableWidth = Math.max(1, size.width - sideInset * 2);
+    const availableHeight = Math.max(1, size.height - topInset - bottomInset);
+    const zoom = Math.min(availableWidth / WORLD_WIDTH, availableHeight / WORLD_HEIGHT);
 
     this.camera = {
-      offsetX: (size.width - WORLD_WIDTH * zoom) / 2,
-      offsetY: (size.height - WORLD_HEIGHT * zoom) / 2,
+      offsetX: sideInset + (availableWidth - WORLD_WIDTH * zoom) / 2,
+      offsetY: topInset + (availableHeight - WORLD_HEIGHT * zoom) / 2,
       zoom,
     };
   }
