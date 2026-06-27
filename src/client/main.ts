@@ -231,15 +231,10 @@ function wireCanvas(): void {
         return;
       }
       state.lastRightClickAt = now;
-      const entity = state.renderer.ownedUnitAt(point.x, point.y, state.playerId);
-      if (entity && entity.ownerId === state.playerId && entity.role === "unit") {
-        canvasElement.setPointerCapture(event.pointerId);
-        state.dragStart = point;
-        state.dragButton = event.button;
-        state.dragRect = undefined;
-      } else {
-        issueContextCommand(point);
-      }
+      canvasElement.setPointerCapture(event.pointerId);
+      state.dragStart = point;
+      state.dragButton = event.button;
+      state.dragRect = undefined;
     }
   });
 
@@ -256,15 +251,11 @@ function wireCanvas(): void {
     const end = { x: event.clientX, y: event.clientY };
     const dragRect = normalizeRect(state.dragStart, end);
     const isClick = dragRect.width < 6 && dragRect.height < 6;
-    if (isClick) {
+    if (state.dragButton === 0) {
+      if (isClick) issueContextCommand(end);
+    } else if (isClick) {
       const entity = state.renderer.ownedUnitAt(end.x, end.y, state.playerId);
-      if (entity) {
-        selectSingle(end);
-      } else if (state.dragButton === 0) {
-        issueContextCommand(end);
-      } else {
-        selectSingle(end);
-      }
+      if (entity) selectSingle(end);
     } else {
       selectMany(dragRect);
     }
