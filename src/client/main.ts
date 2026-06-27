@@ -213,15 +213,7 @@ function wireCanvas(): void {
 
   canvasElement.addEventListener("pointerdown", (event) => {
     const point = { x: event.clientX, y: event.clientY };
-    if (event.button === 0) {
-      event.preventDefault();
-      canvasElement.setPointerCapture(event.pointerId);
-      state.dragStart = point;
-      state.dragButton = event.button;
-      state.dragRect = undefined;
-      return;
-    }
-    if (event.button === 2) {
+    if (isSelectionPointer(event)) {
       event.preventDefault();
       const now = window.performance.now();
       if (now - state.lastRightClickAt <= 900) {
@@ -238,6 +230,14 @@ function wireCanvas(): void {
         state.renderer.setSelection(state.selectedIds);
         updateHudIfPossible();
       }
+      canvasElement.setPointerCapture(event.pointerId);
+      state.dragStart = point;
+      state.dragButton = 2;
+      state.dragRect = undefined;
+      return;
+    }
+    if (event.button === 0) {
+      event.preventDefault();
       canvasElement.setPointerCapture(event.pointerId);
       state.dragStart = point;
       state.dragButton = event.button;
@@ -451,6 +451,10 @@ function resetDragSelection(): void {
   state.dragButton = undefined;
   state.dragRect = undefined;
   state.renderer.setDragRect(undefined);
+}
+
+function isSelectionPointer(event: PointerEvent): boolean {
+  return event.button === 2 || (event.button === 0 && event.ctrlKey);
 }
 
 function required<T extends Element = HTMLElement>(selector: string): T {
